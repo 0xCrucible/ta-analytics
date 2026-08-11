@@ -110,13 +110,14 @@ async function getMarket() {
       return {
         volume24h: pairs.reduce((a,p) => a + (Number(p?.volume?.h24) || 0), 0),
         marketPairs: pairs.length,
+        pairAddresses: [...new Set(pairs.map(p => String(p?.pairAddress || '').toLowerCase()).filter(Boolean))],
         ok: true
       };
     } catch (e) {
       lastError = e;
     }
   }
-  return { volume24h:null, marketPairs:0, ok:false, error:String(lastError?.message || lastError) };
+  return { volume24h:null, marketPairs:0, pairAddresses:[], ok:false, error:String(lastError?.message || lastError) };
 }
 
 
@@ -398,6 +399,129 @@ function readNested(obj, paths) {
   return null;
 }
 
+
+
+function rollingStartMs(days) {
+  return Date.now() - (days * 24 * 60 * 60 * 1000);
+}
+
+function legacyTokenTransferDate(item) {
+  const v = item?.timeStamp ?? item?.timestamp;
+  if (v == null) return null;
+  const raw = String(v);
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    const d = new Date(n < 1e12 ? n * 1000 : n);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+async function getAllTokenTransfersLegacy() {
+  // Blockscout's Etherscan-compatible tokentx endpoint supports filtering by
+  // contract address and returns up to 10,000 ERC-20 transfer events per page.
+  // Fetch oldest-first so the first time an address appears as a recipient is
+  // deterministic.
+  const rows = [];
+  const pageSize = 10000;
+  const maxPages = 8;
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const u = new URL(`${EXPLORER}/api`);
+    u.searchParams.set('module', 'account');
+    u.searchParams.set('action', 'tokentx');
+    u.searchParams.set('contractaddress', TOKEN);
+    u.searchParams.set('page', String(page));
+    u.searchParams.set('offset', String(pageSize));
+    u.searchParams.set('sort', 'asc');
+
+    const json = await getJson(u.toString());
+    const batch = Array.isArray(json?.result) ? json.result : [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+
+  return rows;
+}
+
+async function getRecentTokenTransfersLegacy(days = 31) {
+  // Pull newest transfers first and stop once we have crossed the longest
+  // rolling window used by the dashboard.
+  const rows = [];
+  const pageSize = 10000;
+  const maxPages = 10;
+  const cutoff = rollingStartMs(days);
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const u = new URL(`${EXPLORER}/api`);
+    u.searchParams.set('module', 'account');
+    u.searchParams.set('action', 'tokentx');
+    u.searchParams.set('contractaddress', TOKEN);
+    u.searchParams.set('page', String(page));
+    u.searchParams.set('offset', String(pageSize));
+    u.searchParams.set('sort', 'desc');
+
+    const json = await getJson(u.toString());
+    const batch = Array.isArray(json?.result) ? json.result : [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+
+    const dates = batch.map(legacyTokenTransferDate).filter(Boolean);
+    const oldest = dates.length ? Math.min(...dates.map(d => d.getTime())) : null;
+    if (oldest != null && oldest < cutoff) break;
+  }
+  return rows;
+}
+
+async function getUniqueBuyerStats(pairAddresses = []) {
+  try {
+    const pools = new Set((pairAddresses || []).map(x => String(x).toLowerCase()).filter(Boolean));
+    if (!pools.size) throw new Error('No TA liquidity-pool addresses returned by market source');
+
+    const transfers = await getRecentTokenTransfersLegacy(31);
+    if (!transfers.length) throw new Error('No recent TA transfer history returned');
+
+    const zero = '0x0000000000000000000000000000000000000000';
+    const buys = [];
+
+    for (const item of transfers) {
+      const from = String(item?.from || '').toLowerCase();
+      const to = String(item?.to || '').toLowerCase();
+      if (!pools.has(from)) continue;
+      if (!to || to === zero || pools.has(to) || to === TOKEN.toLowerCase()) continue;
+      const date = legacyTokenTransferDate(item);
+      if (!date) continue;
+      buys.push({ buyer: to, date });
+    }
+
+    const countSince = (days) => {
+      const start = rollingStartMs(days);
+      return new Set(buys.filter(x => x.date.getTime() >= start).map(x => x.buyer)).size;
+    };
+
+    return {
+      ok: true,
+      uniqueBuyers24h: countSince(1),
+      uniqueBuyers7d: countSince(7),
+      uniqueBuyers30d: countSince(30),
+      buyTransfers: buys.length,
+      transferRows: transfers.length,
+      poolsChecked: [...pools],
+      note: 'Distinct recipient wallets in TA transfers originating from tracked liquidity pools during this rolling period.'
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      uniqueBuyers24h: null,
+      uniqueBuyers7d: null,
+      uniqueBuyers30d: null,
+      note: 'Unique buyer data unavailable from the explorer right now.',
+      error: String(e?.message || e)
+    };
+  }
+}
+
 async function getHolders() {
   let lastError;
   for (const url of HOLDER_APIS) {
@@ -442,6 +566,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const [market, fund, holders, treasuryFlows] = await Promise.all([getMarket(), getFund(), getHolders(), getTreasuryInflows()]);
+    const uniqueBuyerStats = await getUniqueBuyerStats(market.pairAddresses || []);
     const r24 = sumDays(fund.records, 1);
     const r7 = sumDays(fund.records, 7);
     const r30 = sumDays(fund.records, 30);
@@ -470,8 +595,8 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t24.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t24.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          newHolders: holders.newHolders24h,
-          newHoldersNote: holders.note,
+          uniqueBuyers: uniqueBuyerStats.uniqueBuyers24h,
+          uniqueBuyersNote: uniqueBuyerStats.note,
           series: buildSeries(fund.records, 1)
         },
         '7d': {
@@ -482,8 +607,8 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          newHolders: holders.newHolders7d,
-          newHoldersNote: holders.note,
+          uniqueBuyers: uniqueBuyerStats.uniqueBuyers7d,
+          uniqueBuyersNote: uniqueBuyerStats.note,
           series: buildSeries(fund.records, 7)
         },
         '30d': {
@@ -494,8 +619,8 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          newHolders: holders.newHolders30d,
-          newHoldersNote: holders.note,
+          uniqueBuyers: uniqueBuyerStats.uniqueBuyers30d,
+          uniqueBuyersNote: uniqueBuyerStats.note,
           series: buildSeries(fund.records, 30)
         }
       },
@@ -503,10 +628,15 @@ module.exports = async function handler(req, res) {
         market: market.ok,
         fund: fund.ok,
         holders: holders.ok,
+        uniqueBuyers: uniqueBuyerStats.ok,
         treasuryFlows: treasuryFlows.ok,
         marketError: market.error || null,
         fundErrors: fund.errors,
         holderError: holders.error || null,
+        uniqueBuyerError: uniqueBuyerStats.error || null,
+        uniqueBuyerTransfers: uniqueBuyerStats.buyTransfers ?? null,
+        uniqueBuyerTransferRows: uniqueBuyerStats.transferRows ?? null,
+        uniqueBuyerPoolsChecked: uniqueBuyerStats.poolsChecked || [],
         treasuryFlowError: treasuryFlows.error || null,
         treasuryFlowSources: treasuryFlows.sources || [],
         nativeUsdPrice: treasuryFlows.nativeUsdPrice ?? null
