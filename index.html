@@ -59,8 +59,8 @@
       <section class="snapshot" aria-label="Current snapshot">
         <div class="snapshot-item"><span>Total Contributions</span><strong id="allTimeDonations">—</strong><a class="snapshot-sub-link" href="https://ta.fund/contributions" target="_blank" rel="noreferrer">View contribution records →</a></div>
         <div class="snapshot-item"><span>Accounts Funded</span><strong id="accountsFunded">—</strong></div>
-        <div class="snapshot-item"><span>Total Holders</span><strong id="totalHolders">—</strong></div>
         <button class="snapshot-item snapshot-link" id="openStates" type="button"><span>States Impacted</span><strong id="statesMetricCount">—</strong><small>View breakdown →</small></button>
+        <div class="snapshot-item"><span>Total Holders</span><strong id="totalHolders">—</strong></div>
       </section>
 
       <section class="analytics-section">
@@ -97,9 +97,21 @@
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="metric-label">UNIQUE BUYERS</span><span class="status-tag" id="uniqueBuyersPeriod">24H</span></div>
-            <div class="metric-value" id="uniqueBuyers">—</div>
-            <div class="metric-sub" id="uniqueBuyersSub">Distinct wallets that bought $TA during this period</div>
+            <div class="metric-head"><span class="metric-label">BUY VOLUME</span><span class="status-tag" id="buyVolumePeriod">24H</span></div>
+            <div class="metric-value" id="buyVolume">—</div>
+            <div class="metric-sub" id="buyVolumeSub">Estimated USD value of TA bought during this period</div>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-head"><span class="metric-label">SELL VOLUME</span><span class="status-tag" id="sellVolumePeriod">24H</span></div>
+            <div class="metric-value" id="sellVolume">—</div>
+            <div class="metric-sub" id="sellVolumeSub">Estimated USD value of TA sold during this period</div>
+          </article>
+
+          <article class="metric-card">
+            <div class="metric-head"><span class="metric-label">UNIQUE WALLETS</span><span class="status-tag" id="uniqueWalletsPeriod">24H</span></div>
+            <div class="metric-value" id="uniqueWallets">—</div>
+            <div class="metric-sub" id="uniqueWalletsSub">Distinct addresses with buy or sell activity during this period</div>
           </article>
         </div>
       </section>

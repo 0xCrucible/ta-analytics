@@ -109,7 +109,9 @@ function renderRange() {
   el('volumePeriod').textContent = meta.label;
   el('donationPeriod').textContent = meta.label;
   el('treasuryAddedPeriod').textContent = meta.label;
-  el('uniqueBuyersPeriod').textContent = meta.label;
+  el('buyVolumePeriod').textContent = meta.label;
+  el('sellVolumePeriod').textContent = meta.label;
+  el('uniqueWalletsPeriod').textContent = meta.label;
   el('chartTitle').textContent = meta.title;
 
   el('volume').textContent = money(r.volume, true);
@@ -120,8 +122,14 @@ function renderRange() {
   el('treasuryAdded').textContent = money(r.treasuryAdded);
   el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading fees received by the treasury during this period';
 
-  el('uniqueBuyers').textContent = integer(r.uniqueBuyers);
-  el('uniqueBuyersSub').textContent = r.uniqueBuyersNote || 'Distinct wallets that bought $TA during this period';
+  el('buyVolume').textContent = money(r.buyVolume, true);
+  el('buyVolumeSub').textContent = r.tradeActivityNote || 'Estimated USD value of TA bought during this period';
+
+  el('sellVolume').textContent = money(r.sellVolume, true);
+  el('sellVolumeSub').textContent = r.tradeActivityNote || 'Estimated USD value of TA sold during this period';
+
+  el('uniqueWallets').textContent = integer(r.uniqueWallets);
+  el('uniqueWalletsSub').textContent = r.uniqueWalletsNote || 'Distinct addresses with buy or sell activity during this period';
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
