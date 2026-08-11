@@ -100,3 +100,6 @@ This build fixes Uniswap v4 backfill failures such as `Pool metadata unavailable
 
 ## Launch-aware backfill
 The initial backfill now uses the earliest TA Uniswap v4 market `pairCreatedAt` timestamp returned by DEX Screener and starts exactly 24 hours before it. If an older deployment already saved a cursor far before launch, the next `/api/backfill` call automatically advances that cursor to the launch-aware start block. No Supabase reset is required.
+
+
+- Improved Contributions by State card legibility with separated cards, stronger state labels, and clearer donation/total hierarchy.

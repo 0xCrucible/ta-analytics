@@ -53,15 +53,18 @@ function renderStates(d) {
     card.className = 'state-card';
     card.innerHTML = `
       <div class="state-card__top">
-        <div>
+        <div class="state-name-wrap">
           <div class="state-abbr">${state.abbr || ''}</div>
           <h3>${state.state}</h3>
         </div>
-        <div class="state-total">${money(state.total)}</div>
+        <div class="state-total-wrap">
+          <span>Total donated</span>
+          <strong class="state-total">${money(state.total)}</strong>
+        </div>
       </div>
       <div class="state-stats">
-        <div><span>Donations</span><strong>${integer(state.count)}</strong></div>
-        <div><span>Total donated</span><strong>${money(state.total)}</strong></div>
+        <span>Donations</span>
+        <strong>${integer(state.count)}</strong>
       </div>`;
     grid.appendChild(card);
   });
