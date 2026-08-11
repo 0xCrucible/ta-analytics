@@ -89,7 +89,19 @@ function closeStates() {
 function chartRows(rangeData, metric) {
   const cfg = METRIC_COPY[metric];
   const rows = Array.isArray(rangeData?.[cfg.source]) ? rangeData[cfg.source] : [];
-  return rows.map((row) => ({ label: row.label || '', value: Number(row[cfg.key]) || 0 }));
+  const mapped = rows.map((row) => ({ label: row.label || '', value: Number(row[cfg.key]) || 0 }));
+  const hasPositive = mapped.some((row) => row.value > 0);
+
+  // If historical trade indexing is not populated yet, do not draw a misleading
+  // flat-zero volume chart. Show the live DEX volume we actually have instead.
+  if (metric === 'volume' && !hasPositive && Number(rangeData?.volume) > 0) {
+    return [{
+      label: rangeData?.volumePartial ? 'Latest 24H' : (RANGE_COPY[RANGE]?.label || 'Available'),
+      value: Number(rangeData.volume)
+    }];
+  }
+
+  return mapped;
 }
 
 function drawMetricChart(rangeData) {
@@ -128,7 +140,13 @@ function renderChart() {
   el('chartTitle').textContent = meta.title;
   el('chartLegend').textContent = cfg.legend;
 
-  if (['volume', 'buyVolume', 'sellVolume', 'uniqueWallets'].includes(METRIC)) {
+  if (METRIC === 'volume') {
+    el('chartNote').textContent = r.volumePartial
+      ? `Partial history · latest 24H DEX volume shown while longer-range history accumulates.`
+      : (r.activitySeries?.some((row) => Number(row.volume) > 0)
+        ? `${cfg.legend} from indexed TA swap activity · ${meta.title.toLowerCase()}.`
+        : `Live DEX volume · ${meta.title.toLowerCase()}.`);
+  } else if (['buyVolume', 'sellVolume', 'uniqueWallets'].includes(METRIC)) {
     el('chartNote').textContent = r.activitySeries?.length
       ? `${cfg.legend} from indexed TA swap activity · ${meta.title.toLowerCase()}.`
       : `Waiting for indexed TA swap history · ${meta.title.toLowerCase()}.`;
@@ -151,9 +169,11 @@ function renderRange() {
   el('treasuryAddedPeriod').textContent = meta.label;
 
   el('volume').textContent = money(r.volume, true);
-  el('volumeSub').textContent = r.volumeAvailable
-    ? `${DATA.marketPairs || 0} tracked TA market pair${DATA.marketPairs === 1 ? '' : 's'} · public DEX/on-chain data`
-    : (r.volumeNote || 'Historical market volume not available yet');
+  el('volumeSub').textContent = r.volumePartial
+    ? (r.volumeNote || 'Partial history · latest 24H DEX volume shown')
+    : (r.volumeAvailable
+      ? `${DATA.marketPairs || 0} tracked TA market pair${DATA.marketPairs === 1 ? '' : 's'} · public DEX/on-chain data`
+      : (r.volumeNote || 'Historical market volume not available yet'));
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
   el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading fees received by the treasury during this period';
@@ -201,9 +221,10 @@ async function loadActivity() {
       DATA.ranges[key].activitySeries = Array.isArray(a.series) ? a.series : [];
       DATA.ranges[key].tradeActivityNote = activity.note;
       DATA.ranges[key].uniqueWalletsNote = activity.walletNote;
-      if (key !== '24h' && a.volume != null) {
+      if (key !== '24h' && a.volume != null && (Number(a.swapCount) > 0 || Number(a.volume) > 0)) {
         DATA.ranges[key].volume = a.volume;
         DATA.ranges[key].volumeAvailable = true;
+        DATA.ranges[key].volumePartial = false;
         DATA.ranges[key].volumeNote = 'Estimated from indexed on-chain Uniswap v4 swaps';
       }
     }

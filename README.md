@@ -103,3 +103,6 @@ The initial backfill now uses the earliest TA Uniswap v4 market `pairCreatedAt` 
 
 
 - Improved Contributions by State card legibility with separated cards, stronger state labels, and clearer donation/total hierarchy.
+
+
+- Longer-range Trading Volume no longer displays $0 when historical indexing is empty. It falls back to the live 24H DEX volume and labels it as partial until indexed history is available.

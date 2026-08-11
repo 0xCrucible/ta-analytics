@@ -869,9 +869,12 @@ module.exports = async function handler(req, res) {
           treasurySeries: buildTreasurySeries(treasuryFlows.records, 1)
         },
         '7d': {
-          volume: walletActivity['7d'].volume,
-          volumeAvailable: walletActivity.ok && walletActivity['7d'].volume != null,
-          volumeNote: walletActivity.ok ? 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price' : '7D volume unavailable',
+          volume: walletActivity.ok && walletActivity['7d'].volume != null ? walletActivity['7d'].volume : market.volume24h,
+          volumeAvailable: (walletActivity.ok && walletActivity['7d'].volume != null) || market.ok,
+          volumePartial: !(walletActivity.ok && walletActivity['7d'].volume != null) && market.ok,
+          volumeNote: walletActivity.ok && walletActivity['7d'].volume != null
+            ? 'Estimated from indexed on-chain Uniswap v4 swaps at the current TA/USD price'
+            : (market.ok ? 'Partial history · currently showing the latest 24H DEX volume' : '7D volume unavailable'),
           ...r7,
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
@@ -885,9 +888,12 @@ module.exports = async function handler(req, res) {
           treasurySeries: buildTreasurySeries(treasuryFlows.records, 7)
         },
         '30d': {
-          volume: walletActivity['30d'].volume,
-          volumeAvailable: walletActivity.ok && walletActivity['30d'].volume != null,
-          volumeNote: walletActivity.ok ? 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price' : '30D volume unavailable',
+          volume: walletActivity.ok && walletActivity['30d'].volume != null ? walletActivity['30d'].volume : market.volume24h,
+          volumeAvailable: (walletActivity.ok && walletActivity['30d'].volume != null) || market.ok,
+          volumePartial: !(walletActivity.ok && walletActivity['30d'].volume != null) && market.ok,
+          volumeNote: walletActivity.ok && walletActivity['30d'].volume != null
+            ? 'Estimated from indexed on-chain Uniswap v4 swaps at the current TA/USD price'
+            : (market.ok ? 'Partial history · currently showing the latest 24H DEX volume' : '30D volume unavailable'),
           ...r30,
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
@@ -901,9 +907,12 @@ module.exports = async function handler(req, res) {
           treasurySeries: buildTreasurySeries(treasuryFlows.records, 30)
         },
         '1y': {
-          volume: walletActivity['1y'].volume,
-          volumeAvailable: walletActivity.ok && walletActivity['1y'].volume != null,
-          volumeNote: walletActivity.ok ? 'Estimated from indexed on-chain Uniswap v4 swaps' : '1Y volume unavailable until the historical backfill completes',
+          volume: walletActivity.ok && walletActivity['1y'].volume != null ? walletActivity['1y'].volume : market.volume24h,
+          volumeAvailable: (walletActivity.ok && walletActivity['1y'].volume != null) || market.ok,
+          volumePartial: !(walletActivity.ok && walletActivity['1y'].volume != null) && market.ok,
+          volumeNote: walletActivity.ok && walletActivity['1y'].volume != null
+            ? 'Estimated from indexed on-chain Uniswap v4 swaps'
+            : (market.ok ? 'Partial history · currently showing the latest 24H DEX volume' : '1Y volume unavailable'),
           ...r365,
           treasuryAdded: treasuryFlows.ok ? t365.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t365.eth : null,
