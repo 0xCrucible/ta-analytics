@@ -176,3 +176,20 @@ el('statesBackdrop').addEventListener('click', closeStates);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && el('statesModal').classList.contains('open')) closeStates();
 });
+
+
+const TA_CONTRACT = '0x9ca1cc0c90d97b4f36c5e2232d4fbd705a73c65d';
+const copyContractButton = el('copyContract');
+if (copyContractButton) {
+  copyContractButton.addEventListener('click', async () => {
+    const status = el('copyContractStatus');
+    try {
+      await navigator.clipboard.writeText(TA_CONTRACT);
+      status.textContent = 'Copied';
+      setTimeout(() => { status.textContent = 'Copy'; }, 1400);
+    } catch (error) {
+      status.textContent = TA_CONTRACT;
+      copyContractButton.title = TA_CONTRACT;
+    }
+  });
+}
