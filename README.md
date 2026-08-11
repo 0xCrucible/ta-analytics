@@ -1,32 +1,48 @@
-# TA Metrics
+# TA Metrics — Brand Refresh
 
-Independent analytics dashboard for the TA token on Robinhood Chain.
+This version updates the site to a lighter TA-inspired aesthetic and changes the information hierarchy so **Total Contributions** is the main hero number.
 
-## Core dashboard
-- Trading Volume
-- Donations Made
-- Treasury Balance
-- Global 24H / 7D / 30D range selector
-- Donation activity chart
-- Independent branding and methodology links
+## Included
+- Large hero total for **Total Contributions**
+- Treasury verification card in the hero section
+- CTA buttons:
+  - Submit a Child's Account → `https://ta.fund/submit-account`
+  - Trade $TA on FOMO → `https://fomo.family/r/parad0x1010`
+- 24H / 7D / 30D period toggle
+- Cards for:
+  - Trading Volume
+  - Donations Made
+  - New Holder Wallets
+  - Treasury Balance
+  - Total Holders
 
-## Data behavior
-- **24H volume:** live rolling volume from DEX Screener.
-- **7D / 30D volume:** intentionally shown as unavailable until historical daily volume snapshots are connected. DEX Screener's public token endpoint supplies rolling 24H volume, not a trustworthy 7D/30D aggregate.
-- **Donations:** computed from TA Fund's published contribution records for the selected period.
-- **Treasury:** current published treasury balance; it is a point-in-time balance, so it does not change with the period selector.
+## Data notes
+- **24H trading volume** comes from public DEX Screener endpoints.
+- **Treasury / Total Contributions / Accounts Funded** come from TA Fund's published pages.
+- **Total holders** will display if the public explorer returns a holder count from one of the attempted token endpoints.
+- **New Holder Wallets** is visually included, but many public explorers do not expose first-time-holder history directly. If the current source does not provide it, the site will show a note instead of inventing the number.
 
-This avoids presenting estimated or fabricated longer-period volume as measured data.
+## Deploy
+The repo root should look like this:
 
-## Deploy to Vercel
-1. Upload this folder to a GitHub repository.
-2. Import the repo in Vercel.
-3. Deploy. No build step is required.
+```text
+api/
+  dashboard.js
+app.js
+index.html
+styles.css
+vercel.json
+package.json
+README.md
+```
 
-The serverless endpoint is `/api/dashboard`.
+Then deploy to Vercel with the root directory set to `./` (or blank).
 
-## Recommended next upgrade
-Add a tiny historical-volume database and a daily cron snapshot. Once at least 7/30 days of snapshots exist, the existing API response can fill `ranges.7d.volume` and `ranges.30d.volume` with exact recorded totals.
+## Treasury inflow metric
+The Trading Volume card now also displays **Added to Treasury** for the selected 24H / 7D / 30D period. It uses actual ERC-20 transfers into the published treasury address from the Robinhood Chain Blockscout address token-transfer endpoint rather than assuming a fee percentage.
 
-Token: `0x9cA1cC0c90d97B4F36c5E2232d4fbD705a73c65d`
-Treasury: `0x1F41B0441ae6E00633Bd2E6607218d370DA4896e`
+Because token transfer USD valuation depends on the explorer response, the metric intentionally displays `—` if Blockscout cannot provide a usable USD value rather than fabricating an estimate.
+
+
+## State Impact view
+The header **States** button opens an interactive state impact view. The API now follows all pages of TA Fund's published contributions, deduplicates records by Contribution ID, and aggregates them by state. Each state shows the number of contributions, individual contribution amounts, and cumulative total.
