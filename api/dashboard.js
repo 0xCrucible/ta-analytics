@@ -111,13 +111,20 @@ async function getMarket() {
         volume24h: pairs.reduce((a,p) => a + (Number(p?.volume?.h24) || 0), 0),
         marketPairs: pairs.length,
         pairAddresses: [...new Set(pairs.map(p => String(p?.pairAddress || '').toLowerCase()).filter(Boolean))],
+        tokenPriceUsd: (() => {
+          const ranked = [...pairs].sort((a,b) => (Number(b?.liquidity?.usd)||0) - (Number(a?.liquidity?.usd)||0));
+          const p = ranked.find(x => String(x?.baseToken?.address || '').toLowerCase() === TOKEN)?.priceUsd
+            || ranked.find(x => String(x?.quoteToken?.address || '').toLowerCase() === TOKEN)?.priceUsd;
+          const n = Number(p);
+          return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
         ok: true
       };
     } catch (e) {
       lastError = e;
     }
   }
-  return { volume24h:null, marketPairs:0, pairAddresses:[], ok:false, error:String(lastError?.message || lastError) };
+  return { volume24h:null, marketPairs:0, pairAddresses:[], tokenPriceUsd:null, ok:false, error:String(lastError?.message || lastError) };
 }
 
 
@@ -474,7 +481,7 @@ async function getRecentTokenTransfersLegacy(days = 31) {
   return rows;
 }
 
-async function getUniqueBuyerStats(pairAddresses = []) {
+async function getWalletActivityStats(pairAddresses = [], tokenPriceUsd = null) {
   try {
     const pools = new Set((pairAddresses || []).map(x => String(x).toLowerCase()).filter(Boolean));
     if (!pools.size) throw new Error('No TA liquidity-pool addresses returned by market source');
@@ -483,40 +490,68 @@ async function getUniqueBuyerStats(pairAddresses = []) {
     if (!transfers.length) throw new Error('No recent TA transfer history returned');
 
     const zero = '0x0000000000000000000000000000000000000000';
-    const buys = [];
+    const tokenAddr = TOKEN.toLowerCase();
+    const activity = [];
+
+    const tokenAmount = (item) => {
+      const raw = Number(item?.value);
+      const decimals = Number(item?.tokenDecimal ?? 18);
+      if (!Number.isFinite(raw) || !Number.isFinite(decimals)) return null;
+      const amount = raw / (10 ** decimals);
+      return Number.isFinite(amount) ? amount : null;
+    };
 
     for (const item of transfers) {
       const from = String(item?.from || '').toLowerCase();
       const to = String(item?.to || '').toLowerCase();
-      if (!pools.has(from)) continue;
-      if (!to || to === zero || pools.has(to) || to === TOKEN.toLowerCase()) continue;
       const date = legacyTokenTransferDate(item);
-      if (!date) continue;
-      buys.push({ buyer: to, date });
+      const amountTa = tokenAmount(item);
+      if (!date || amountTa == null || amountTa <= 0) continue;
+
+      // Pool -> address = buy-side TA outflow. Address -> pool = sell-side TA inflow.
+      if (pools.has(from) && to && to !== zero && !pools.has(to) && to !== tokenAddr) {
+        activity.push({ side:'buy', wallet:to, date, amountTa });
+      } else if (pools.has(to) && from && from !== zero && !pools.has(from) && from !== tokenAddr) {
+        activity.push({ side:'sell', wallet:from, date, amountTa });
+      }
     }
 
-    const countSince = (days) => {
+    const statsSince = (days) => {
       const start = rollingStartMs(days);
-      return new Set(buys.filter(x => x.date.getTime() >= start).map(x => x.buyer)).size;
+      const rows = activity.filter(x => x.date.getTime() >= start);
+      const buyTa = rows.filter(x => x.side === 'buy').reduce((a,x) => a + x.amountTa, 0);
+      const sellTa = rows.filter(x => x.side === 'sell').reduce((a,x) => a + x.amountTa, 0);
+      const wallets = new Set(rows.map(x => x.wallet));
+      return {
+        uniqueWallets: wallets.size,
+        buyVolume: tokenPriceUsd != null ? buyTa * tokenPriceUsd : null,
+        sellVolume: tokenPriceUsd != null ? sellTa * tokenPriceUsd : null,
+        buyTa,
+        sellTa
+      };
     };
 
     return {
       ok: true,
-      uniqueBuyers24h: countSince(1),
-      uniqueBuyers7d: countSince(7),
-      uniqueBuyers30d: countSince(30),
-      buyTransfers: buys.length,
+      '24h': statsSince(1),
+      '7d': statsSince(7),
+      '30d': statsSince(30),
       transferRows: transfers.length,
+      activityRows: activity.length,
       poolsChecked: [...pools],
-      note: 'Distinct recipient wallets in TA transfers originating from tracked liquidity pools during this rolling period.'
+      note: tokenPriceUsd != null
+        ? 'Buy and sell volume estimated from TA moved through tracked pools at the current TA/USD price.'
+        : 'Wallet activity identified from TA transfers through tracked pools; USD volume unavailable because token price was unavailable.',
+      walletNote: 'Distinct addresses with TA buy or sell activity through tracked liquidity pools during this rolling period.'
     };
   } catch (e) {
     return {
       ok: false,
-      uniqueBuyers24h: null,
-      uniqueBuyers7d: null,
-      uniqueBuyers30d: null,
-      note: 'Unique buyer data unavailable from the explorer right now.',
+      '24h': {uniqueWallets:null,buyVolume:null,sellVolume:null},
+      '7d': {uniqueWallets:null,buyVolume:null,sellVolume:null},
+      '30d': {uniqueWallets:null,buyVolume:null,sellVolume:null},
+      note: 'Buy/sell activity data unavailable from the explorer right now.',
+      walletNote: 'Unique wallet activity unavailable from the explorer right now.',
       error: String(e?.message || e)
     };
   }
@@ -566,7 +601,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const [market, fund, holders, treasuryFlows] = await Promise.all([getMarket(), getFund(), getHolders(), getTreasuryInflows()]);
-    const uniqueBuyerStats = await getUniqueBuyerStats(market.pairAddresses || []);
+    const walletActivity = await getWalletActivityStats(market.pairAddresses || [], market.tokenPriceUsd);
     const r24 = sumDays(fund.records, 1);
     const r7 = sumDays(fund.records, 7);
     const r30 = sumDays(fund.records, 30);
@@ -595,8 +630,11 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t24.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t24.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          uniqueBuyers: uniqueBuyerStats.uniqueBuyers24h,
-          uniqueBuyersNote: uniqueBuyerStats.note,
+          buyVolume: walletActivity['24h'].buyVolume,
+          sellVolume: walletActivity['24h'].sellVolume,
+          uniqueWallets: walletActivity['24h'].uniqueWallets,
+          tradeActivityNote: walletActivity.note,
+          uniqueWalletsNote: walletActivity.walletNote,
           series: buildSeries(fund.records, 1)
         },
         '7d': {
@@ -607,8 +645,11 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          uniqueBuyers: uniqueBuyerStats.uniqueBuyers7d,
-          uniqueBuyersNote: uniqueBuyerStats.note,
+          buyVolume: walletActivity['7d'].buyVolume,
+          sellVolume: walletActivity['7d'].sellVolume,
+          uniqueWallets: walletActivity['7d'].uniqueWallets,
+          tradeActivityNote: walletActivity.note,
+          uniqueWalletsNote: walletActivity.walletNote,
           series: buildSeries(fund.records, 7)
         },
         '30d': {
@@ -619,8 +660,11 @@ module.exports = async function handler(req, res) {
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
           treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
-          uniqueBuyers: uniqueBuyerStats.uniqueBuyers30d,
-          uniqueBuyersNote: uniqueBuyerStats.note,
+          buyVolume: walletActivity['30d'].buyVolume,
+          sellVolume: walletActivity['30d'].sellVolume,
+          uniqueWallets: walletActivity['30d'].uniqueWallets,
+          tradeActivityNote: walletActivity.note,
+          uniqueWalletsNote: walletActivity.walletNote,
           series: buildSeries(fund.records, 30)
         }
       },
@@ -628,15 +672,16 @@ module.exports = async function handler(req, res) {
         market: market.ok,
         fund: fund.ok,
         holders: holders.ok,
-        uniqueBuyers: uniqueBuyerStats.ok,
+        walletActivity: walletActivity.ok,
         treasuryFlows: treasuryFlows.ok,
         marketError: market.error || null,
         fundErrors: fund.errors,
         holderError: holders.error || null,
-        uniqueBuyerError: uniqueBuyerStats.error || null,
-        uniqueBuyerTransfers: uniqueBuyerStats.buyTransfers ?? null,
-        uniqueBuyerTransferRows: uniqueBuyerStats.transferRows ?? null,
-        uniqueBuyerPoolsChecked: uniqueBuyerStats.poolsChecked || [],
+        walletActivityError: walletActivity.error || null,
+        walletActivityRows: walletActivity.activityRows ?? null,
+        walletActivityTransferRows: walletActivity.transferRows ?? null,
+        walletActivityPoolsChecked: walletActivity.poolsChecked || [],
+        tokenPriceUsd: market.tokenPriceUsd ?? null,
         treasuryFlowError: treasuryFlows.error || null,
         treasuryFlowSources: treasuryFlows.sources || [],
         nativeUsdPrice: treasuryFlows.nativeUsdPrice ?? null
