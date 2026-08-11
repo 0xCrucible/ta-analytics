@@ -1,17 +1,12 @@
-# TA Metrics — Trading Fees to Treasury
+# TA Metrics — Dex/Contract CTA layout
 
-Latest layout changes:
-- TA Activity variable metrics are now exactly:
-  - Trading Volume
-  - Donations Made
-  - Trading Fees to Treasury
-- All three follow the same 24H / 7D / 30D selector.
-- Current Treasury Balance is not shown as a TA Activity metric; it remains in the upper current-summary area.
-- Holder metrics remain outside TA Activity.
-- Total Contributions keeps the “View contribution records →” link.
-- States Impacted remains in the summary row with its breakdown view.
+Latest layout update:
+- Token contract box sits next to **View on Dexscreener**.
+- **Trade $TA on FOMO →** is now a smaller blue text link under the contract box.
+- The contract remains copyable.
+- The child-account CTA remains the primary button.
 
-Repo structure:
+Deploy with the same Vercel structure:
 
 ```text
 api/
@@ -23,3 +18,9 @@ vercel.json
 package.json
 README.md
 ```
+
+
+## Latest change
+- Added **New Token Holders** to the TA Activity metric grid.
+- It follows the same rolling 24H / 7D / 30D selector.
+- The backend does not fabricate holder growth. If the public explorer cannot provide historical holder data, the metric displays `—` with an availability note.

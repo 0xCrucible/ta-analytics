@@ -109,6 +109,7 @@ function renderRange() {
   el('volumePeriod').textContent = meta.label;
   el('donationPeriod').textContent = meta.label;
   el('treasuryAddedPeriod').textContent = meta.label;
+  el('newHoldersPeriod').textContent = meta.label;
   el('chartTitle').textContent = meta.title;
 
   el('volume').textContent = money(r.volume, true);
@@ -118,6 +119,9 @@ function renderRange() {
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
   el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading fees received by the treasury during this period';
+
+  el('newHolders').textContent = integer(r.newHolders);
+  el('newHoldersSub').textContent = r.newHoldersNote || 'New TA holder wallets during this period';
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
