@@ -121,11 +121,10 @@ async function getMarket() {
 
 
 
-function decimalAmount(raw, decimals) {
+function nativeAmount(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
   const n = Number(raw);
-  const d = Number(decimals ?? 18);
-  if (!Number.isFinite(n) || !Number.isFinite(d)) return null;
-  return n / (10 ** d);
+  return Number.isFinite(n) ? n / 1e18 : null;
 }
 
 function transferTimestamp(item) {
@@ -140,16 +139,16 @@ function transferTimestamp(item) {
 }
 
 async function getTreasuryInflows() {
-  // Uses actual ERC-20 transfers into the published treasury address rather than
-  // multiplying trading volume by an assumed fee percentage.
+  // TA's published treasury is primarily native ETH. Read normal address
+  // transactions and count successful inbound native-value transfers.
   let items = [];
   let next = null;
   let pages = 0;
   let lastError = null;
+
   try {
     do {
-      const u = new URL(`${EXPLORER}/api/v2/addresses/${TREASURY}/token-transfers`);
-      u.searchParams.set('type', 'ERC-20');
+      const u = new URL(`${EXPLORER}/api/v2/addresses/${TREASURY}/transactions`);
       if (next && typeof next === 'object') {
         Object.entries(next).forEach(([k,v]) => { if (v != null) u.searchParams.set(k, String(v)); });
       }
@@ -158,8 +157,7 @@ async function getTreasuryInflows() {
       items.push(...rows);
       next = json?.next_page_params || null;
       pages += 1;
-      // 10 pages is plenty for the short 30-day display window and avoids runaway calls.
-      if (pages >= 10) next = null;
+      if (pages >= 12) next = null;
       const oldest = rows.map(transferTimestamp).filter(Boolean).sort((a,b)=>a-b)[0];
       if (oldest && oldest.getTime() < rangeStart(30).getTime()) next = null;
     } while (next);
@@ -167,35 +165,45 @@ async function getTreasuryInflows() {
     lastError = e;
   }
 
-  if (!items.length) return {ok:false, records:[], error:String(lastError?.message || lastError || 'No treasury transfers returned')};
+  if (!items.length) {
+    return {ok:false, records:[], error:String(lastError?.message || lastError || 'No treasury transactions returned')};
+  }
 
   const records = [];
   for (const x of items) {
     const to = String(x?.to?.hash || x?.to?.address || x?.to || '').toLowerCase();
     if (to !== TREASURY.toLowerCase()) continue;
-    const date = transferTimestamp(x);
-    if (!date) continue;
-    const token = x?.token || {};
-    const decimals = token?.decimals ?? x?.tokenDecimal ?? 18;
-    const raw = x?.total?.value ?? x?.value ?? x?.amount;
-    const tokenAmount = decimalAmount(raw, decimals);
-    if (tokenAmount == null || tokenAmount <= 0) continue;
+    if (String(x?.status || '').toLowerCase() === 'error') continue;
 
-    // Blockscout sometimes provides USD value/price fields. Prefer an actual transfer USD
-    // value when present, otherwise derive it from token amount * current token exchange rate.
-    const directUsd = num(x?.total?.value_usd ?? x?.value_usd ?? x?.fiat_value);
-    const priceUsd = num(token?.exchange_rate ?? token?.exchangeRate ?? token?.price);
-    const usd = directUsd != null ? directUsd : (priceUsd != null ? tokenAmount * priceUsd : null);
-    if (usd == null || usd <= 0) continue;
-    records.push({date, usd});
+    const date = transferTimestamp(x);
+    const eth = nativeAmount(x?.value);
+    if (!date || eth == null || eth <= 0) continue;
+
+    // Blockscout transaction responses can include exchange_rate for the
+    // native coin. Use that transaction response value instead of assuming a fee %.
+    const exchangeRate = num(x?.exchange_rate ?? x?.exchangeRate);
+    const usd = exchangeRate != null && exchangeRate > 0 ? eth * exchangeRate : null;
+    records.push({date, eth, usd});
   }
-  return {ok:true, records, error:null};
+
+  const hasUsd = records.some(r => r.usd != null);
+  return {
+    ok: records.length > 0,
+    usdAvailable: hasUsd,
+    records,
+    error: records.length ? null : String(lastError?.message || lastError || 'No inbound native treasury transfers found')
+  };
 }
 
 function treasuryDays(records, days) {
   const start = rangeStart(days).getTime();
   const xs = records.filter(x => x.date.getTime() >= start);
-  return xs.reduce((sum,x) => sum + x.usd, 0);
+  const usdRows = xs.filter(x => x.usd != null);
+  return {
+    eth: xs.reduce((sum,x) => sum + (x.eth || 0), 0),
+    usd: usdRows.length ? usdRows.reduce((sum,x) => sum + x.usd, 0) : null,
+    count: xs.length
+  };
 }
 
 async function parseContributionPage(pageUrl) {
@@ -361,8 +369,9 @@ module.exports = async function handler(req, res) {
           volumeAvailable: market.ok,
           volumeNote: market.ok ? null : 'Live market source unavailable',
           ...r24,
-          treasuryAdded: treasuryFlows.ok ? t24 : null,
-          treasuryAddedNote: treasuryFlows.ok ? 'Actual inbound ERC-20 value to the published treasury in this period' : 'Treasury transfer source unavailable',
+          treasuryAdded: treasuryFlows.ok ? t24.usd : null,
+          treasuryAddedEth: treasuryFlows.ok ? t24.eth : null,
+          treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? `${t24.count} inbound native ETH transfer${t24.count === 1 ? '' : 's'} in this period` : `${t24.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
           newHolders: holders.newHolders24h,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 1)
@@ -372,8 +381,9 @@ module.exports = async function handler(req, res) {
           volumeAvailable: false,
           volumeNote: '7D volume requires historical snapshots',
           ...r7,
-          treasuryAdded: treasuryFlows.ok ? t7 : null,
-          treasuryAddedNote: treasuryFlows.ok ? 'Actual inbound ERC-20 value to the published treasury in this period' : 'Treasury transfer source unavailable',
+          treasuryAdded: treasuryFlows.ok ? t7.usd : null,
+          treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
+          treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? `${t7.count} inbound native ETH transfer${t7.count === 1 ? '' : 's'} in this period` : `${t7.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
           newHolders: holders.newHolders7d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 7)
@@ -383,8 +393,9 @@ module.exports = async function handler(req, res) {
           volumeAvailable: false,
           volumeNote: '30D volume requires historical snapshots',
           ...r30,
-          treasuryAdded: treasuryFlows.ok ? t30 : null,
-          treasuryAddedNote: treasuryFlows.ok ? 'Actual inbound ERC-20 value to the published treasury in this period' : 'Treasury transfer source unavailable',
+          treasuryAdded: treasuryFlows.ok ? t30.usd : null,
+          treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
+          treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? `${t30.count} inbound native ETH transfer${t30.count === 1 ? '' : 's'} in this period` : `${t30.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
           newHolders: holders.newHolders30d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 30)
