@@ -2,6 +2,10 @@ const TOKEN = '0x9ca1cc0c90d97b4f36c5e2232d4fbd705a73c65d';
 const TA_BASE = 'https://ta.fund';
 const TREASURY = '0x1F41B0441ae6E00633Bd2E6607218d370DA4896e';
 const EXPLORER = 'https://robinhoodchain.blockscout.com';
+const RPC = 'https://rpc.mainnet.chain.robinhood.com';
+const V4_POOL_MANAGER = '0x8366a39cc670b4001a1121b8f6a443a643e40951';
+const V4_SWAP_TOPIC = '0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f';
+const V4_INITIALIZE_TOPIC = '0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438';
 const STATE_ABBR = {
   Alabama:'AL', Alaska:'AK', Arizona:'AZ', Arkansas:'AR', California:'CA', Colorado:'CO', Connecticut:'CT', Delaware:'DE', Florida:'FL', Georgia:'GA', Hawaii:'HI', Idaho:'ID', Illinois:'IL', Indiana:'IN', Iowa:'IA', Kansas:'KS', Kentucky:'KY', Louisiana:'LA', Maine:'ME', Maryland:'MD', Massachusetts:'MA', Michigan:'MI', Minnesota:'MN', Mississippi:'MS', Missouri:'MO', Montana:'MT', Nebraska:'NE', Nevada:'NV', 'New Hampshire':'NH', 'New Jersey':'NJ', 'New Mexico':'NM', 'New York':'NY', 'North Carolina':'NC', 'North Dakota':'ND', Ohio:'OH', Oklahoma:'OK', Oregon:'OR', Pennsylvania:'PA', 'Rhode Island':'RI', 'South Carolina':'SC', 'South Dakota':'SD', Tennessee:'TN', Texas:'TX', Utah:'UT', Vermont:'VT', Virginia:'VA', Washington:'WA', 'West Virginia':'WV', Wisconsin:'WI', Wyoming:'WY', 'District of Columbia':'DC'
 };
@@ -60,7 +64,7 @@ function buildSeries(records, days) {
   return out;
 }
 function sumDays(records, days) {
-  const start = rangeStart(days).getTime();
+  const start = Date.now() - (days * 24 * 60 * 60 * 1000);
   const xs = records.filter(x => x.date.getTime() >= start);
   return { donations: xs.reduce((a,x) => a + x.amount, 0), donationCount: xs.length };
 }
@@ -481,78 +485,257 @@ async function getRecentTokenTransfersLegacy(days = 31) {
   return rows;
 }
 
-async function getWalletActivityStats(pairAddresses = [], tokenPriceUsd = null) {
+function parseBlockNumber(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const text = String(value);
+  const n = text.startsWith('0x') ? parseInt(text, 16) : Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function getBlockAtTimestamp(ms) {
+  const u = new URL(`${EXPLORER}/api`);
+  u.searchParams.set('module', 'block');
+  u.searchParams.set('action', 'getblocknobytime');
+  u.searchParams.set('timestamp', String(Math.floor(ms / 1000)));
+  u.searchParams.set('closest', 'before');
+  const json = await getJson(u.toString());
+  const block = parseBlockNumber(json?.result?.blockNumber ?? json?.result);
+  if (block == null) throw new Error('Could not resolve block number for timestamp');
+  return block;
+}
+
+async function getLatestBlockNumber() {
+  const u = new URL(`${EXPLORER}/api`);
+  u.searchParams.set('module', 'block');
+  u.searchParams.set('action', 'eth_block_number');
+  const json = await getJson(u.toString());
+  const block = parseBlockNumber(json?.result?.blockNumber ?? json?.result);
+  if (block == null) throw new Error('Could not resolve latest block');
+  return block;
+}
+
+function logDate(item) {
+  const v = item?.timeStamp ?? item?.timestamp ?? item?.block_timestamp;
+  if (v == null) return null;
+  const raw = String(v);
+  if (raw.startsWith('0x')) {
+    const n = parseInt(raw, 16);
+    return Number.isFinite(n) ? new Date(n * 1000) : null;
+  }
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    return new Date(n < 1e12 ? n * 1000 : n);
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function topicAddress(topic) {
+  const h = String(topic || '').replace(/^0x/, '');
+  return h.length >= 40 ? `0x${h.slice(-40)}`.toLowerCase() : null;
+}
+
+function signedWord(word) {
+  if (!word) return null;
+  let n = BigInt(`0x${word}`);
+  const sign = 1n << 255n;
+  if (n & sign) n -= 1n << 256n;
+  return n;
+}
+
+function decodeSwapAmounts(data) {
+  const h = String(data || '').replace(/^0x/, '');
+  if (h.length < 128) return null;
   try {
-    const pools = new Set((pairAddresses || []).map(x => String(x).toLowerCase()).filter(Boolean));
-    if (!pools.size) throw new Error('No TA liquidity-pool addresses returned by market source');
+    return { amount0: signedWord(h.slice(0,64)), amount1: signedWord(h.slice(64,128)) };
+  } catch {
+    return null;
+  }
+}
 
-    const transfers = await getRecentTokenTransfersLegacy(31);
-    if (!transfers.length) throw new Error('No recent TA transfer history returned');
+async function getExplorerLogs({fromBlock, toBlock, topic0, topic1}) {
+  const u = new URL(`${EXPLORER}/api`);
+  u.searchParams.set('module', 'logs');
+  u.searchParams.set('action', 'getLogs');
+  u.searchParams.set('fromBlock', String(fromBlock));
+  u.searchParams.set('toBlock', String(toBlock));
+  u.searchParams.set('address', V4_POOL_MANAGER);
+  u.searchParams.set('topic0', topic0);
+  if (topic1) {
+    u.searchParams.set('topic1', topic1);
+    u.searchParams.set('topic0_1_opr', 'and');
+  }
+  const json = await getJson(u.toString());
+  if (Array.isArray(json?.result)) return json.result;
+  const msg = String(json?.message || json?.result || 'Explorer log query failed');
+  if (/no records/i.test(msg)) return [];
+  throw new Error(msg);
+}
 
-    const zero = '0x0000000000000000000000000000000000000000';
-    const tokenAddr = TOKEN.toLowerCase();
-    const activity = [];
+async function getLogsComplete(params, depth = 0) {
+  const {fromBlock, toBlock} = params;
+  if (fromBlock > toBlock) return [];
+  try {
+    const rows = await getExplorerLogs(params);
+    // Blockscout caps this legacy endpoint at 1,000 logs. Split a saturated
+    // interval so we do not silently truncate busy periods.
+    if (rows.length < 1000 || fromBlock === toBlock || depth >= 20) return rows;
+  } catch (e) {
+    if (fromBlock === toBlock || depth >= 20) throw e;
+  }
+  const mid = Math.floor((fromBlock + toBlock) / 2);
+  const [a,b] = await Promise.all([
+    getLogsComplete({...params, toBlock:mid}, depth+1),
+    getLogsComplete({...params, fromBlock:mid+1}, depth+1)
+  ]);
+  return [...a,...b];
+}
 
-    const tokenAmount = (item) => {
-      const raw = Number(item?.value);
-      const decimals = Number(item?.tokenDecimal ?? 18);
-      if (!Number.isFinite(raw) || !Number.isFinite(decimals)) return null;
-      const amount = raw / (10 ** decimals);
-      return Number.isFinite(amount) ? amount : null;
-    };
+async function getV4PoolMeta(poolId) {
+  const rows = await getExplorerLogs({
+    fromBlock: 0,
+    toBlock: 'latest',
+    topic0: V4_INITIALIZE_TOPIC,
+    topic1: poolId
+  });
+  const row = rows[0];
+  const topics = row?.topics || [];
+  if (!row || topics.length < 4) throw new Error(`Initialize event not found for pool ${poolId}`);
+  const currency0 = topicAddress(topics[2]);
+  const currency1 = topicAddress(topics[3]);
+  const token = TOKEN.toLowerCase();
+  const tokenIndex = currency0 === token ? 0 : (currency1 === token ? 1 : null);
+  if (tokenIndex == null) throw new Error(`TA is not a currency in v4 pool ${poolId}`);
+  return {poolId, currency0, currency1, tokenIndex};
+}
 
-    for (const item of transfers) {
-      const from = String(item?.from || '').toLowerCase();
-      const to = String(item?.to || '').toLowerCase();
-      const date = legacyTokenTransferDate(item);
-      const amountTa = tokenAmount(item);
-      if (!date || amountTa == null || amountTa <= 0) continue;
+async function rpcBatchTransactions(hashes) {
+  const out = new Map();
+  const unique = [...new Set(hashes.filter(Boolean))];
+  const chunkSize = 100;
+  for (let i=0; i<unique.length; i+=chunkSize) {
+    const chunk = unique.slice(i, i+chunkSize);
+    const payload = chunk.map((hash, j) => ({
+      jsonrpc:'2.0', id:j+1, method:'eth_getTransactionByHash', params:[hash]
+    }));
+    const r = await fetchWithTimeout(RPC, {
+      method:'POST',
+      headers:{'content-type':'application/json','accept':'application/json'},
+      body:JSON.stringify(payload)
+    }, 12000);
+    if (!r.ok) throw new Error(`Robinhood RPC returned ${r.status}`);
+    const json = await r.json();
+    if (!Array.isArray(json)) throw new Error('Robinhood RPC did not accept transaction batch');
+    for (const item of json) {
+      const hash = item?.result?.hash?.toLowerCase();
+      const from = item?.result?.from?.toLowerCase();
+      if (hash && from) out.set(hash, from);
+    }
+  }
+  return out;
+}
 
-      // Pool -> address = buy-side TA outflow. Address -> pool = sell-side TA inflow.
-      if (pools.has(from) && to && to !== zero && !pools.has(to) && to !== tokenAddr) {
-        activity.push({ side:'buy', wallet:to, date, amountTa });
-      } else if (pools.has(to) && from && from !== zero && !pools.has(from) && from !== tokenAddr) {
-        activity.push({ side:'sell', wallet:from, date, amountTa });
+async function getWalletActivityStats(pairAddresses = [], tokenPriceUsd = null, marketVolume24h = null) {
+  try {
+    // DEX Screener represents Uniswap v4 pools by their bytes32 pool ID rather
+    // than a pool contract address. Ignore ordinary 20-byte pair addresses here.
+    const poolIds = [...new Set((pairAddresses || [])
+      .map(x => String(x).toLowerCase())
+      .filter(x => /^0x[0-9a-f]{64}$/.test(x)))];
+    if (!poolIds.length) throw new Error('No Uniswap v4 TA pool IDs returned by market source');
+
+    const [startBlock, latestBlock, ...metas] = await Promise.all([
+      getBlockAtTimestamp(rollingStartMs(30)),
+      getLatestBlockNumber(),
+      ...poolIds.map(getV4PoolMeta)
+    ]);
+
+    const logsByPool = await Promise.all(metas.map(meta => getLogsComplete({
+      fromBlock:startBlock,
+      toBlock:latestBlock,
+      topic0:V4_SWAP_TOPIC,
+      topic1:meta.poolId
+    })));
+
+    const swaps = [];
+    for (let i=0; i<metas.length; i++) {
+      const meta = metas[i];
+      for (const log of logsByPool[i]) {
+        const amounts = decodeSwapAmounts(log?.data);
+        const date = logDate(log);
+        const hash = String(log?.transactionHash || log?.transaction_hash || '').toLowerCase();
+        if (!amounts || !date || !hash) continue;
+        const rawTa = meta.tokenIndex === 0 ? amounts.amount0 : amounts.amount1;
+        if (rawTa == null || rawTa === 0n) continue;
+        // TA currently uses 18 decimals. Positive v4 event delta means the user
+        // receives TA (buy); negative means the user sends TA (sell).
+        const amountTa = Number(rawTa < 0n ? -rawTa : rawTa) / 1e18;
+        if (!Number.isFinite(amountTa) || amountTa <= 0) continue;
+        swaps.push({
+          side: rawTa > 0n ? 'buy' : 'sell',
+          date,
+          hash,
+          amountTa
+        });
       }
     }
+    if (!swaps.length) throw new Error('No TA v4 swap events returned for the last 30 days');
+
+    const origins = await rpcBatchTransactions(swaps.map(x => x.hash));
+    const activity = swaps.map(x => ({...x, wallet:origins.get(x.hash) || null}));
 
     const statsSince = (days) => {
       const start = rollingStartMs(days);
       const rows = activity.filter(x => x.date.getTime() >= start);
       const buyTa = rows.filter(x => x.side === 'buy').reduce((a,x) => a + x.amountTa, 0);
       const sellTa = rows.filter(x => x.side === 'sell').reduce((a,x) => a + x.amountTa, 0);
-      const wallets = new Set(rows.map(x => x.wallet));
+      const wallets = new Set(rows.map(x => x.wallet).filter(Boolean));
+      const buyVolumeRaw = tokenPriceUsd != null ? buyTa * tokenPriceUsd : null;
+      const sellVolumeRaw = tokenPriceUsd != null ? sellTa * tokenPriceUsd : null;
       return {
         uniqueWallets: wallets.size,
-        buyVolume: tokenPriceUsd != null ? buyTa * tokenPriceUsd : null,
-        sellVolume: tokenPriceUsd != null ? sellTa * tokenPriceUsd : null,
+        buyVolume: buyVolumeRaw,
+        sellVolume: sellVolumeRaw,
+        volume: buyVolumeRaw != null && sellVolumeRaw != null ? buyVolumeRaw + sellVolumeRaw : null,
         buyTa,
-        sellTa
+        sellTa,
+        swapCount: rows.length
       };
     };
 
+    const s24 = statsSince(1);
+    // Anchor the 24H buy/sell split to DEX Screener's aggregate 24H dollar
+    // volume. The direction split comes from the actual v4 TA deltas.
+    if (marketVolume24h != null && s24.volume > 0) {
+      const scale = marketVolume24h / s24.volume;
+      s24.buyVolume *= scale;
+      s24.sellVolume *= scale;
+      s24.volume = marketVolume24h;
+    }
+    const s7 = statsSince(7);
+    const s30 = statsSince(30);
+
     return {
-      ok: true,
-      '24h': statsSince(1),
-      '7d': statsSince(7),
-      '30d': statsSince(30),
-      transferRows: transfers.length,
-      activityRows: activity.length,
-      poolsChecked: [...pools],
-      note: tokenPriceUsd != null
-        ? 'Buy and sell volume estimated from TA moved through tracked pools at the current TA/USD price.'
-        : 'Wallet activity identified from TA transfers through tracked pools; USD volume unavailable because token price was unavailable.',
-      walletNote: 'Distinct addresses with TA buy or sell activity through tracked liquidity pools during this rolling period.'
+      ok:true,
+      '24h':s24,
+      '7d':s7,
+      '30d':s30,
+      swapRows:swaps.length,
+      walletsResolved:origins.size,
+      poolsChecked:metas.map(m => ({poolId:m.poolId,currency0:m.currency0,currency1:m.currency1,tokenIndex:m.tokenIndex})),
+      note:'Buy/sell direction comes from TA’s Uniswap v4 swap events. 24H USD buy/sell totals are anchored to DEX Screener total volume; 7D/30D USD totals use the current TA/USD price.',
+      walletNote:'Distinct originating transaction wallets that bought or sold TA during this rolling period.'
     };
   } catch (e) {
     return {
-      ok: false,
-      '24h': {uniqueWallets:null,buyVolume:null,sellVolume:null},
-      '7d': {uniqueWallets:null,buyVolume:null,sellVolume:null},
-      '30d': {uniqueWallets:null,buyVolume:null,sellVolume:null},
-      note: 'Buy/sell activity data unavailable from the explorer right now.',
-      walletNote: 'Unique wallet activity unavailable from the explorer right now.',
-      error: String(e?.message || e)
+      ok:false,
+      '24h':{uniqueWallets:null,buyVolume:null,sellVolume:null,volume:null},
+      '7d':{uniqueWallets:null,buyVolume:null,sellVolume:null,volume:null},
+      '30d':{uniqueWallets:null,buyVolume:null,sellVolume:null,volume:null},
+      note:'Buy/sell activity data unavailable right now.',
+      walletNote:'Unique wallet activity unavailable right now.',
+      error:String(e?.message || e)
     };
   }
 }
@@ -601,7 +784,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const [market, fund, holders, treasuryFlows] = await Promise.all([getMarket(), getFund(), getHolders(), getTreasuryInflows()]);
-    const walletActivity = await getWalletActivityStats(market.pairAddresses || [], market.tokenPriceUsd);
+    const walletActivity = await getWalletActivityStats(market.pairAddresses || [], market.tokenPriceUsd, market.volume24h);
     const r24 = sumDays(fund.records, 1);
     const r7 = sumDays(fund.records, 7);
     const r30 = sumDays(fund.records, 30);
@@ -638,9 +821,9 @@ module.exports = async function handler(req, res) {
           series: buildSeries(fund.records, 1)
         },
         '7d': {
-          volume: null,
-          volumeAvailable: false,
-          volumeNote: '7D volume requires historical snapshots',
+          volume: walletActivity['7d'].volume,
+          volumeAvailable: walletActivity.ok && walletActivity['7d'].volume != null,
+          volumeNote: walletActivity.ok ? 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price' : '7D volume unavailable',
           ...r7,
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
@@ -653,9 +836,9 @@ module.exports = async function handler(req, res) {
           series: buildSeries(fund.records, 7)
         },
         '30d': {
-          volume: null,
-          volumeAvailable: false,
-          volumeNote: '30D volume requires historical snapshots',
+          volume: walletActivity['30d'].volume,
+          volumeAvailable: walletActivity.ok && walletActivity['30d'].volume != null,
+          volumeNote: walletActivity.ok ? 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price' : '30D volume unavailable',
           ...r30,
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
@@ -678,8 +861,8 @@ module.exports = async function handler(req, res) {
         fundErrors: fund.errors,
         holderError: holders.error || null,
         walletActivityError: walletActivity.error || null,
-        walletActivityRows: walletActivity.activityRows ?? null,
-        walletActivityTransferRows: walletActivity.transferRows ?? null,
+        walletActivityRows: walletActivity.swapRows ?? null,
+        walletOriginsResolved: walletActivity.walletsResolved ?? null,
         walletActivityPoolsChecked: walletActivity.poolsChecked || [],
         tokenPriceUsd: market.tokenPriceUsd ?? null,
         treasuryFlowError: treasuryFlows.error || null,
