@@ -1,26 +1,13 @@
-# TA Metrics — Dex/Contract CTA layout
+# TA Metrics — Clean Hero Referral Layout
 
-Latest layout update:
-- Token contract box sits next to **View on Dexscreener**.
-- **Trade $TA on FOMO →** is now a smaller blue text link under the contract box.
-- The contract remains copyable.
-- The child-account CTA remains the primary button.
+This version keeps the hero utility row clean and moves the FOMO referral out of it.
 
-Deploy with the same Vercel structure:
+Hero controls:
+- Submit a Child's Account
+- View on Dexscreener
+- Contract / Copy
 
-```text
-api/
-  dashboard.js
-app.js
-index.html
-styles.css
-vercel.json
-package.json
-README.md
-```
+The FOMO referral link now appears inside the **Trading Volume** metric in TA Activity:
+- Trade $TA on FOMO →
 
-
-## Latest change
-- Added **New Token Holders** to the TA Activity metric grid.
-- It follows the same rolling 24H / 7D / 30D selector.
-- The backend does not fabricate holder growth. If the public explorer cannot provide historical holder data, the metric displays `—` with an availability note.
+The hero controls are forced to the same 44px height to prevent the uneven layout seen in the previous versions.
