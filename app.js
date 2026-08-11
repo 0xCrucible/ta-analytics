@@ -26,6 +26,7 @@ const RANGE_COPY = {
 function renderStates(d) {
   const states = Array.isArray(d.stateSummary) ? d.stateSummary : [];
   el('statesReached').textContent = integer(states.length);
+  el('statesMetricCount').textContent = integer(states.length);
   el('stateDonationCount').textContent = integer(d.stateContributionCount ?? states.reduce((n, s) => n + (s.count || 0), 0));
   el('stateDonationTotal').textContent = money(d.stateContributionTotal ?? states.reduce((n, s) => n + (s.total || 0), 0));
 

@@ -8,9 +8,10 @@ const STATE_ABBR = {
 const STATE_PATTERN = Object.keys(STATE_ABBR).sort((a,b) => b.length - a.length).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
 
 const HOLDER_APIS = [
+  // Blockscout token-info endpoint. A successful response includes `holders_count`.
   `https://robinhoodchain.blockscout.com/api/v2/tokens/${TOKEN}`,
-  `https://explorer.robinhoodchain.com/api/v2/tokens/${TOKEN}`,
-  `https://robinhoodchain.blockscout.com/api?module=token&action=getToken&contractaddress=${TOKEN}`
+  // Alternate Robinhood Chain explorer hostname, if enabled.
+  `https://explorer.robinhoodchain.com/api/v2/tokens/${TOKEN}`
 ];
 
 const strip = (s = '') => s
@@ -24,7 +25,10 @@ const strip = (s = '') => s
   .trim();
 
 const num = (s) => {
-  const n = Number(String(s ?? '').replace(/[$,%]/g, '').replace(/,/g, ''));
+  // Missing API fields must stay missing. Number('') is 0 in JavaScript,
+  // which previously caused an unavailable holder count to display as zero.
+  if (s === null || s === undefined || String(s).trim() === '') return null;
+  const n = Number(String(s).replace(/[$,%]/g, '').replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 };
 

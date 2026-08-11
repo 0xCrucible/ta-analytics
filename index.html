@@ -3,96 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Independent TA token analytics with total contributions, treasury, volume, and holder metrics.">
+  <meta name="description" content="Independent TA token analytics: contributions, treasury, volume, holders, and state impact.">
   <title>TA Metrics — Independent TA Analytics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="page-decor decor-left"></div>
-  <div class="page-decor decor-right"></div>
-
   <div class="shell">
     <header class="site-header">
-      <div class="brand-lockup">
-        <div class="brand-mark" aria-hidden="true">
-          <div class="brand-mark__inner">TA</div>
-        </div>
-        <div class="brand-copy">
-          <div class="brand-stars">★ ★ ★</div>
+      <div class="brand">
+        <div class="brand-mark">TA</div>
+        <div>
           <div class="brand-title">TA Metrics</div>
-          <div class="brand-sub">Independent analytics & transparency view</div>
+          <div class="brand-sub">Independent analytics</div>
         </div>
       </div>
-      <div class="header-actions">
-        <button class="states-button" id="openStates" type="button">States</button>
-        <div class="live-pill"><span class="dot"></span><span id="status">Refreshing</span></div>
-      </div>
+      <div class="live-pill"><span class="dot"></span><span id="status">Refreshing</span></div>
     </header>
 
     <main>
-      <section class="hero-grid">
-        <div class="hero-copy">
-          <p class="eyebrow">INDEPENDENT TA ANALYTICS</p>
-          <div class="hero-total-wrap">
-            <p class="mini-label">TOTAL CONTRIBUTIONS</p>
-            <div class="hero-total" id="heroContributions">—</div>
-            <p class="support-line"><strong id="accountsFundedHero">—</strong> accounts funded · <strong id="totalHoldersHero">—</strong> total holders</p>
-          </div>
-          <h1>Every dollar,<br>clearly tracked.</h1>
-          <p class="lede">An independent overview of TA trading activity, donations made, treasury balance, and holder growth — presented in one simple place.</p>
+      <section class="hero">
+        <div class="hero-main">
+          <p class="section-label">TOTAL CONTRIBUTIONS</p>
+          <div class="hero-total" id="heroContributions">—</div>
+          <p class="hero-detail"><strong id="accountsFundedHero">—</strong> accounts funded <span>·</span> <strong id="totalHoldersHero">—</strong> total holders</p>
+          <p class="hero-description">Independent tracking of TA Fund contributions, treasury, token activity, and holder data from public sources.</p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="https://ta.fund/submit-account" target="_blank" rel="noreferrer">Submit a Child’s Account</a>
-            <a class="btn btn-secondary" href="https://fomo.family/r/parad0x1010" target="_blank" rel="noreferrer">Trade $TA on FOMO</a>
-          </div>
-          <div class="hero-links">
-            <a href="https://ta.fund/contributions" target="_blank" rel="noreferrer">View contributions ↗</a>
-            <a href="https://dexscreener.com/robinhood/0x9ca1cc0c90d97b4f36c5e2232d4fbd705a73c65d" target="_blank" rel="noreferrer">View market ↗</a>
+            <a class="button primary" href="https://ta.fund/submit-account" target="_blank" rel="noreferrer">Submit a Child’s Account</a>
+            <a class="button secondary" href="https://fomo.family/r/parad0x1010" target="_blank" rel="noreferrer">Trade $TA on FOMO</a>
           </div>
         </div>
 
-        <aside class="treasury-card">
-          <p class="card-kicker">CURRENT TREASURY</p>
-          <div class="treasury-value" id="treasury">—</div>
-          <p class="treasury-copy">Safe multisig · Robinhood Chain<br>Debit Card · Bank Account</p>
-          <div class="verify-block">
-            <div class="verify-title">Verified from Robinhood Chain</div>
-            <div class="verify-meta" id="verifyMeta">Waiting for live update…</div>
-            <div class="verify-sub" id="treasuryAddressShort">0x1F41B044…0DA4896e</div>
+        <aside class="treasury-summary">
+          <div class="summary-head">
+            <span class="section-label">CURRENT TREASURY</span>
+            <span class="status-tag">NOW</span>
           </div>
-          <div class="card-links">
-            <a href="https://robinhoodchain.blockscout.com/address/0x1F41B0441ae6E00633Bd2E6607218d370DA4896e" target="_blank" rel="noreferrer">View Safe ↗</a>
-            <a href="https://robinhoodchain.blockscout.com/address/0x1F41B0441ae6E00633Bd2E6607218d370DA4896e" target="_blank" rel="noreferrer">View on Explorer ↗</a>
+          <div class="summary-value" id="treasury">—</div>
+          <div class="summary-meta" id="verifyMeta">Waiting for live update…</div>
+          <div class="summary-address">0x1F41B044…0DA4896e</div>
+          <div class="summary-links">
+            <a href="https://robinhoodchain.blockscout.com/address/0x1F41B0441ae6E00633Bd2E6607218d370DA4896e" target="_blank" rel="noreferrer">Explorer ↗</a>
+            <a href="https://ta.fund/transparency" target="_blank" rel="noreferrer">Transparency ↗</a>
           </div>
         </aside>
       </section>
 
-      <section class="overview-strip">
-        <div class="overview-item">
-          <span>Total Contributions</span>
-          <strong id="allTimeDonations">—</strong>
-        </div>
-        <div class="overview-item">
-          <span>Accounts Funded</span>
-          <strong id="accountsFunded">—</strong>
-        </div>
-        <div class="overview-item">
-          <span>Total Holders</span>
-          <strong id="totalHolders">—</strong>
-        </div>
-        <div class="overview-item">
-          <span>Tracked Markets</span>
-          <strong id="marketPairs">—</strong>
-        </div>
+      <section class="snapshot" aria-label="Current snapshot">
+        <div class="snapshot-item"><span>Total Contributions</span><strong id="allTimeDonations">—</strong></div>
+        <div class="snapshot-item"><span>Accounts Funded</span><strong id="accountsFunded">—</strong></div>
+        <div class="snapshot-item"><span>Total Holders</span><strong id="totalHolders">—</strong></div>
+        <div class="snapshot-item"><span>Tracked Markets</span><strong id="marketPairs">—</strong></div>
       </section>
 
       <section class="analytics-section">
         <div class="analytics-head">
           <div>
-            <p class="eyebrow">PERIOD ANALYTICS</p>
-            <h2>Volume, donations, and holder growth.</h2>
+            <p class="section-label">ANALYTICS</p>
+            <h1>TA activity</h1>
+            <p>Period metrics update with the selected range. Current-balance metrics are labeled “Now.”</p>
           </div>
           <div class="period" role="group" aria-label="Dashboard time range">
             <button class="period-btn active" data-range="24h">24H</button>
@@ -102,42 +73,54 @@
         </div>
 
         <div class="metric-grid">
-          <article class="metric-card metric-card--feature">
-            <div class="metric-head"><span class="label">TRADING VOLUME</span><span class="chip" id="volumePeriod">24H</span></div>
+          <article class="metric-card">
+            <div class="metric-head"><span class="metric-label">TRADING VOLUME</span><span class="status-tag" id="volumePeriod">24H</span></div>
             <div class="metric-value" id="volume">—</div>
-            <div class="metric-sub" id="volumeSub">Loading market data…</div><div class="treasury-added"><span>ADDED TO TREASURY</span><strong id="treasuryAdded">—</strong><small id="treasuryAddedSub">Actual inbound treasury transfers in this period</small></div>
+            <div class="metric-sub" id="volumeSub">Loading market data…</div>
+            <div class="metric-secondary">
+              <span>Added to treasury</span>
+              <strong id="treasuryAdded">—</strong>
+              <small id="treasuryAddedSub">Actual inbound treasury transfers in this period</small>
+            </div>
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="label">DONATIONS MADE</span><span class="chip" id="donationPeriod">24H</span></div>
+            <div class="metric-head"><span class="metric-label">DONATIONS MADE</span><span class="status-tag" id="donationPeriod">24H</span></div>
             <div class="metric-value" id="donations">—</div>
             <div class="metric-sub" id="donationsSub">Published contributions</div>
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="label">NEW HOLDER WALLETS</span><span class="chip" id="holderPeriod">24H</span></div>
+            <div class="metric-head"><span class="metric-label">NEW HOLDER WALLETS</span><span class="status-tag" id="holderPeriod">24H</span></div>
             <div class="metric-value" id="newHolders">—</div>
             <div class="metric-sub" id="newHoldersSub">New wallets holding TA in this period</div>
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="label">TREASURY BALANCE</span><span class="chip">NOW</span></div>
+            <div class="metric-head"><span class="metric-label">TREASURY BALANCE</span><span class="status-tag">NOW</span></div>
             <div class="metric-value" id="treasuryCard">—</div>
             <div class="metric-sub">Current published treasury balance</div>
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="label">TOTAL HOLDERS</span><span class="chip">NOW</span></div>
+            <div class="metric-head"><span class="metric-label">TOTAL HOLDERS</span><span class="status-tag">NOW</span></div>
             <div class="metric-value" id="holdersNow">—</div>
             <div class="metric-sub" id="holdersNowSub">Current holder count</div>
           </article>
+
+          <button class="metric-card states-metric" id="openStates" type="button">
+            <div class="metric-head"><span class="metric-label">STATE IMPACT</span><span class="status-tag">ALL TIME</span></div>
+            <div class="metric-value" id="statesMetricCount">—</div>
+            <div class="metric-sub">States with published TA contributions</div>
+            <div class="metric-action">View state breakdown <span>→</span></div>
+          </button>
         </div>
       </section>
 
       <section class="chart-panel">
-        <div class="chart-panel__head">
+        <div class="chart-head">
           <div>
-            <p class="eyebrow">PUBLISHED ACTIVITY</p>
+            <p class="section-label">PUBLISHED DONATION ACTIVITY</p>
             <h2 id="chartTitle">Last 24 hours</h2>
           </div>
           <div class="legend"><span class="legend-dot"></span> Donations made</div>
@@ -146,16 +129,16 @@
         <div class="chart-note" id="chartNote">Published donation activity for the selected period.</div>
       </section>
 
-      <section class="methodology">
+      <section class="sources">
         <div>
-          <p class="eyebrow">METHODOLOGY</p>
-          <h2>Public sources, clearly labeled.</h2>
-          <p>This website is an independent project. Market data is sourced from public DEX data, while treasury and contribution figures are based on TA Fund’s published transparency records. Holder metrics are shown when a public source is available.</p>
+          <p class="section-label">SOURCES & METHODOLOGY</p>
+          <h2>Public data, independently presented.</h2>
+          <p>This site is independently operated. Market data comes from public DEX sources. Treasury and contribution figures are based on TA Fund’s published records. Holder metrics are displayed only when a public source returns usable data.</p>
         </div>
-        <div class="methodology-links">
-          <a href="https://ta.fund/transparency" target="_blank" rel="noreferrer">Verify donations & treasury ↗</a>
-          <a href="https://ta.fund/submit-account" target="_blank" rel="noreferrer">Submit a child’s account ↗</a>
-          <a href="https://fomo.family/r/parad0x1010" target="_blank" rel="noreferrer">Trade $TA on FOMO ↗</a>
+        <div class="source-links">
+          <a href="https://ta.fund/transparency" target="_blank" rel="noreferrer">TA Fund transparency ↗</a>
+          <a href="https://ta.fund/contributions" target="_blank" rel="noreferrer">Published contributions ↗</a>
+          <a href="https://dexscreener.com/robinhood/0x9ca1cc0c90d97b4f36c5e2232d4fbd705a73c65d" target="_blank" rel="noreferrer">DEX market data ↗</a>
         </div>
       </section>
     </main>
@@ -163,11 +146,11 @@
     <div class="states-modal" id="statesModal" aria-hidden="true">
       <div class="states-backdrop" id="statesBackdrop"></div>
       <section class="states-dialog" role="dialog" aria-modal="true" aria-labelledby="statesTitle">
-        <div class="states-dialog__head">
+        <div class="states-dialog-head">
           <div>
-            <p class="eyebrow">STATE IMPACT</p>
-            <h2 id="statesTitle">Where contributions have gone.</h2>
-            <p class="states-intro">Every state shown below has at least one published TA contribution. Totals are aggregated from TA Fund’s public contribution records.</p>
+            <p class="section-label">STATE IMPACT</p>
+            <h2 id="statesTitle">Contributions by state</h2>
+            <p>State totals are aggregated from TA Fund’s published contribution records.</p>
           </div>
           <button class="states-close" id="closeStates" type="button" aria-label="Close states view">×</button>
         </div>
@@ -184,9 +167,9 @@
     </div>
 
     <footer class="site-footer">
-      <div>TA Metrics</div>
-      <div class="footer-copy">Independent analytics dashboard · Not operated by TA Fund or Robinhood Markets, Inc.</div>
-      <code>Token: 0x9cA1…c65d</code>
+      <span>TA Metrics</span>
+      <span>Independent analytics · Not operated by TA Fund or Robinhood Markets, Inc.</span>
+      <code>0x9cA1…c65d</code>
     </footer>
   </div>
   <script src="app.js"></script>
