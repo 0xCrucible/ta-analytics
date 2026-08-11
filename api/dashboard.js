@@ -784,7 +784,15 @@ module.exports = async function handler(req, res) {
 
   try {
     const [market, fund, holders, treasuryFlows] = await Promise.all([getMarket(), getFund(), getHolders(), getTreasuryInflows()]);
-    const walletActivity = await getWalletActivityStats(market.pairAddresses || [], market.tokenPriceUsd, market.volume24h);
+    // Heavy Uniswap v4 activity is loaded separately from /api/activity so it can never block the core dashboard.
+    const walletActivity = {
+      ok:false,
+      '24h':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
+      '7d':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
+      '30d':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
+      note:'Loading on-chain trade activity…',
+      walletNote:'Loading on-chain trade activity…'
+    };
     const r24 = sumDays(fund.records, 1);
     const r7 = sumDays(fund.records, 7);
     const r30 = sumDays(fund.records, 30);
