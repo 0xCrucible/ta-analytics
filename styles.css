@@ -55,12 +55,12 @@ button{font:inherit}
 
 /* Market CTA layout: Dexscreener + contract, with FOMO as a secondary text link. */
 .market-actions{display:flex;align-items:flex-start;gap:10px}
-.contract-stack{display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+.dex-stack{display:flex;flex-direction:column;align-items:flex-start;gap:7px}
 .contract-chip{min-height:42px}
 .trade-text-link{font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;line-height:1.3}
 .trade-text-link:hover{text-decoration:underline}
 @media(max-width:620px){
   .market-actions{display:grid;grid-template-columns:1fr;gap:10px}
-  .contract-stack{width:100%}
+  .dex-stack{width:100%}
   .contract-chip{width:100%;justify-content:center}
 }
