@@ -49,6 +49,21 @@ function rangeStart(days) {
   return d;
 }
 function buildSeries(records, days) {
+  if (days >= 365) {
+    const now = new Date();
+    const out = [];
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+      const xs = records.filter(x => x.date >= start && x.date < end && x.date.getTime() >= Date.now() - 365 * 86400000);
+      out.push({
+        label: start.toLocaleDateString('en-US', {timeZone:'UTC', month:'short'}),
+        amount: xs.reduce((a,x) => a + x.amount, 0),
+        count: xs.length
+      });
+    }
+    return out;
+  }
   const out = [];
   const start = rangeStart(days);
   for (let i = 0; i < days; i++) {
@@ -62,6 +77,27 @@ function buildSeries(records, days) {
     });
   }
   return out;
+}
+function buildTreasurySeries(records, days) {
+  if (days >= 365) {
+    const now = new Date();
+    const cutoff = Date.now() - 365 * 86400000;
+    return Array.from({length:12}, (_, idx) => {
+      const i = 11 - idx;
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+      const xs = records.filter(x => x.date >= start && x.date < end && x.date.getTime() >= cutoff);
+      const usdRows = xs.filter(x => x.usd != null);
+      return { label:start.toLocaleDateString('en-US',{timeZone:'UTC',month:'short'}), amount:usdRows.length ? usdRows.reduce((a,x)=>a+x.usd,0) : 0, count:xs.length };
+    });
+  }
+  const start = rangeStart(days);
+  return Array.from({length:days}, (_, i) => {
+    const d = new Date(start); d.setUTCDate(start.getUTCDate()+i);
+    const xs = records.filter(x => dayKey(x.date) === dayKey(d));
+    const usdRows = xs.filter(x => x.usd != null);
+    return { label:d.toLocaleDateString('en-US',{timeZone:'UTC',month:'short',day:'numeric'}), amount:usdRows.length ? usdRows.reduce((a,x)=>a+x.usd,0) : 0, count:xs.length };
+  });
 }
 function sumDays(records, days) {
   const start = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -790,15 +826,18 @@ module.exports = async function handler(req, res) {
       '24h':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
       '7d':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
       '30d':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
+      '1y':{buyVolume:null,sellVolume:null,uniqueWallets:null,volume:null},
       note:'Loading on-chain trade activity…',
       walletNote:'Loading on-chain trade activity…'
     };
     const r24 = sumDays(fund.records, 1);
     const r7 = sumDays(fund.records, 7);
     const r30 = sumDays(fund.records, 30);
+    const r365 = sumDays(fund.records, 365);
     const t24 = treasuryDays(treasuryFlows.records, 1);
     const t7 = treasuryDays(treasuryFlows.records, 7);
     const t30 = treasuryDays(treasuryFlows.records, 30);
+    const t365 = treasuryDays(treasuryFlows.records, 365);
 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
     return res.status(200).json({
@@ -826,7 +865,8 @@ module.exports = async function handler(req, res) {
           uniqueWallets: walletActivity['24h'].uniqueWallets,
           tradeActivityNote: walletActivity.note,
           uniqueWalletsNote: walletActivity.walletNote,
-          series: buildSeries(fund.records, 1)
+          series: buildSeries(fund.records, 1),
+          treasurySeries: buildTreasurySeries(treasuryFlows.records, 1)
         },
         '7d': {
           volume: walletActivity['7d'].volume,
@@ -841,7 +881,8 @@ module.exports = async function handler(req, res) {
           uniqueWallets: walletActivity['7d'].uniqueWallets,
           tradeActivityNote: walletActivity.note,
           uniqueWalletsNote: walletActivity.walletNote,
-          series: buildSeries(fund.records, 7)
+          series: buildSeries(fund.records, 7),
+          treasurySeries: buildTreasurySeries(treasuryFlows.records, 7)
         },
         '30d': {
           volume: walletActivity['30d'].volume,
@@ -856,7 +897,24 @@ module.exports = async function handler(req, res) {
           uniqueWallets: walletActivity['30d'].uniqueWallets,
           tradeActivityNote: walletActivity.note,
           uniqueWalletsNote: walletActivity.walletNote,
-          series: buildSeries(fund.records, 30)
+          series: buildSeries(fund.records, 30),
+          treasurySeries: buildTreasurySeries(treasuryFlows.records, 30)
+        },
+        '1y': {
+          volume: walletActivity['1y'].volume,
+          volumeAvailable: walletActivity.ok && walletActivity['1y'].volume != null,
+          volumeNote: walletActivity.ok ? 'Estimated from indexed on-chain Uniswap v4 swaps' : '1Y volume unavailable until the historical backfill completes',
+          ...r365,
+          treasuryAdded: treasuryFlows.ok ? t365.usd : null,
+          treasuryAddedEth: treasuryFlows.ok ? t365.eth : null,
+          treasuryAddedNote: treasuryFlows.ok ? (t365.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
+          buyVolume: walletActivity['1y'].buyVolume,
+          sellVolume: walletActivity['1y'].sellVolume,
+          uniqueWallets: walletActivity['1y'].uniqueWallets,
+          tradeActivityNote: walletActivity.note,
+          uniqueWalletsNote: walletActivity.walletNote,
+          series: buildSeries(fund.records, 365),
+          treasurySeries: buildTreasurySeries(treasuryFlows.records, 365)
         }
       },
       sourceStatus: {
