@@ -287,7 +287,7 @@ async function getTreasuryInflows() {
     records,
     nativeUsdPrice: priceInfo.price,
     sources: [normal.source, internal.source].filter(Boolean),
-    error: records.length ? null : (errors.join(' | ') || 'No inbound native treasury transfers found')
+    error: records.length ? null : (errors.join(' | ') || 'No treasury fee transfers found')
   };
 }
 
@@ -469,7 +469,7 @@ module.exports = async function handler(req, res) {
           ...r24,
           treasuryAdded: treasuryFlows.ok ? t24.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t24.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? `${t24.count} inbound native ETH transfer${t24.count === 1 ? '' : 's'}${t24.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t24.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
+          treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
           newHolders: holders.newHolders24h,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 1)
@@ -481,7 +481,7 @@ module.exports = async function handler(req, res) {
           ...r7,
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? `${t7.count} inbound native ETH transfer${t7.count === 1 ? '' : 's'}${t7.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t7.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
+          treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
           newHolders: holders.newHolders7d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 7)
@@ -493,7 +493,7 @@ module.exports = async function handler(req, res) {
           ...r30,
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? `${t30.count} inbound native ETH transfer${t30.count === 1 ? '' : 's'}${t30.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t30.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
+          treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? 'Trading fees received by the treasury during this period' : 'Trading fees received · USD value unavailable') : 'Treasury fee data unavailable',
           newHolders: holders.newHolders30d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 30)
