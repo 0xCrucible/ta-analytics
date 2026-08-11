@@ -117,7 +117,7 @@ function renderRange() {
     : (r.volumeNote || 'Historical market volume not available yet');
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
-  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading-fee inflows received by the treasury in this period';
+  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading fees received by the treasury during this period';
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
