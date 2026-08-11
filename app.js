@@ -156,6 +156,40 @@ function render(d) {
   renderRange();
 }
 
+
+async function loadActivity() {
+  try {
+    const response = await fetch('/api/activity', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Activity API ${response.status}`);
+    const activity = await response.json();
+    if (!activity.ok) throw new Error(activity.error || 'Activity source unavailable');
+    if (!DATA) return;
+    for (const key of ['24h', '7d', '30d']) {
+      const a = activity.ranges?.[key] || {};
+      DATA.ranges[key].buyVolume = a.buyVolume ?? null;
+      DATA.ranges[key].sellVolume = a.sellVolume ?? null;
+      DATA.ranges[key].uniqueWallets = a.uniqueWallets ?? null;
+      DATA.ranges[key].tradeActivityNote = activity.note;
+      DATA.ranges[key].uniqueWalletsNote = activity.walletNote;
+      // 7D and 30D total volume can be reconstructed by the activity endpoint.
+      if (key !== '24h' && a.volume != null) {
+        DATA.ranges[key].volume = a.volume;
+        DATA.ranges[key].volumeAvailable = true;
+        DATA.ranges[key].volumeNote = 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price';
+      }
+    }
+    renderRange();
+  } catch (error) {
+    console.error('TA Metrics activity load failed:', error);
+    if (!DATA) return;
+    for (const key of ['24h', '7d', '30d']) {
+      DATA.ranges[key].tradeActivityNote = 'Trade activity temporarily unavailable';
+      DATA.ranges[key].uniqueWalletsNote = 'Trade activity temporarily unavailable';
+    }
+    renderRange();
+  }
+}
+
 async function load() {
   try {
     const r = await fetch('/api/dashboard', { cache: 'no-store' });
@@ -163,6 +197,7 @@ async function load() {
     const data = await r.json();
     console.log('TA Metrics source status:', data.sourceStatus);
     render(data);
+    loadActivity();
   } catch (e) {
     console.error('TA Metrics dashboard load failed:', e);
     el('status').textContent = 'Data unavailable';
