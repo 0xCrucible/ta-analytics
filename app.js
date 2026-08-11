@@ -41,22 +41,24 @@ function renderStates(d) {
     const card = document.createElement('article');
     card.className = 'state-card';
 
-    const amounts = Array.isArray(state.donations) ? state.donations : [];
-    const allSame = amounts.length > 1 && amounts.every((x) => +x.amount === +amounts[0].amount);
-    const individual = allSame
-      ? `${money(amounts[0].amount)} × ${amounts.length}`
-      : amounts.map((x) => money(x.amount)).join(' · ');
-
     card.innerHTML = `
       <div class="state-card__top">
-        <div class="state-abbr">${state.abbr || ''}</div>
+        <div>
+          <div class="state-abbr">${state.abbr || ''}</div>
+          <h3>${state.state}</h3>
+        </div>
         <div class="state-total">${money(state.total)}</div>
       </div>
-      <h3>${state.state}</h3>
-      <div class="state-count">${state.count} contribution${state.count === 1 ? '' : 's'}</div>
-      <div class="state-individual-label">Individual donations</div>
-      <div class="state-individual">${individual || '—'}</div>
-      <div class="state-dates">${amounts.slice(0, 4).map((x) => x.dateLabel).filter(Boolean).join(' · ')}${amounts.length > 4 ? ` · +${amounts.length - 4} more` : ''}</div>
+      <div class="state-stats">
+        <div>
+          <span>Donations</span>
+          <strong>${integer(state.count)}</strong>
+        </div>
+        <div>
+          <span>Total donated</span>
+          <strong>${money(state.total)}</strong>
+        </div>
+      </div>
     `;
     grid.appendChild(card);
   });
@@ -115,10 +117,12 @@ function renderRange() {
     : (r.volumeNote || 'Historical market volume not available yet');
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
-  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Actual inbound treasury transfers in this period';
+  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Inbound native ETH value in this period';
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
+  el('activityDonations').textContent = money(r.donations);
+  el('activityDonationCount').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
 
   el('newHolders').textContent = integer(r.newHolders);
   el('newHoldersSub').textContent = r.newHoldersNote || 'New wallets holding TA in this period';
@@ -139,7 +143,6 @@ function render(d) {
   el('totalHoldersHero').textContent = integer(d.totalHolders);
   el('holdersNow').textContent = integer(d.totalHolders);
   el('holdersNowSub').textContent = d.holdersAvailable ? 'Current holder count from public explorer data' : 'Holder count source unavailable right now';
-  el('marketPairs').textContent = integer(d.marketPairs);
   renderStates(d);
 
   const updated = new Date(d.updatedAt || Date.now());

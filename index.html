@@ -55,7 +55,7 @@
         <div class="snapshot-item"><span>Total Contributions</span><strong id="allTimeDonations">—</strong></div>
         <div class="snapshot-item"><span>Accounts Funded</span><strong id="accountsFunded">—</strong></div>
         <div class="snapshot-item"><span>Total Holders</span><strong id="totalHolders">—</strong></div>
-        <div class="snapshot-item"><span>Tracked Markets</span><strong id="marketPairs">—</strong></div>
+        <button class="snapshot-item snapshot-link" id="openStates" type="button"><span>States Impacted</span><strong id="statesMetricCount">—</strong><small>View breakdown →</small></button>
       </section>
 
       <section class="analytics-section">
@@ -77,11 +77,6 @@
             <div class="metric-head"><span class="metric-label">TRADING VOLUME</span><span class="status-tag" id="volumePeriod">24H</span></div>
             <div class="metric-value" id="volume">—</div>
             <div class="metric-sub" id="volumeSub">Loading market data…</div>
-            <div class="metric-secondary">
-              <span>Added to treasury</span>
-              <strong id="treasuryAdded">—</strong>
-              <small id="treasuryAddedSub">Actual inbound treasury transfers in this period</small>
-            </div>
           </article>
 
           <article class="metric-card">
@@ -108,12 +103,6 @@
             <div class="metric-sub" id="holdersNowSub">Current holder count</div>
           </article>
 
-          <button class="metric-card states-metric" id="openStates" type="button">
-            <div class="metric-head"><span class="metric-label">STATE IMPACT</span><span class="status-tag">ALL TIME</span></div>
-            <div class="metric-value" id="statesMetricCount">—</div>
-            <div class="metric-sub">States with published TA contributions</div>
-            <div class="metric-action">View state breakdown <span>→</span></div>
-          </button>
         </div>
       </section>
 
@@ -124,6 +113,18 @@
             <h2 id="chartTitle">Last 24 hours</h2>
           </div>
           <div class="legend"><span class="legend-dot"></span> Donations made</div>
+        </div>
+        <div class="activity-summary">
+          <div class="activity-summary-item">
+            <span>Added to treasury</span>
+            <strong id="treasuryAdded">—</strong>
+            <small id="treasuryAddedSub">Inbound native ETH value in this period</small>
+          </div>
+          <div class="activity-summary-item">
+            <span>Donations made</span>
+            <strong id="activityDonations">—</strong>
+            <small id="activityDonationCount">Published contributions in this period</small>
+          </div>
         </div>
         <div id="chart" class="chart"></div>
         <div class="chart-note" id="chartNote">Published donation activity for the selected period.</div>
