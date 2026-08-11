@@ -95,6 +95,8 @@ README.md
 ```
 
 
-## 1Y chart behavior
+## Pool metadata fix
+This build fixes Uniswap v4 backfill failures such as `Pool metadata unavailable for 0x80526500…`. V4 pool IDs are bytes32 identifiers, not pool contract addresses. The indexer now derives TA's currency position from the DEX Screener pair currencies and uses Initialize-event discovery only as a fallback.
 
-The 1Y selector means all available activity within the most recent year. The historical backfill is intentionally limited to 30 days because TA is currently younger than that. Ongoing sync keeps every newly indexed swap, so the 1Y window grows naturally over time without rescanning a year of empty pre-launch blocks. Clicking any TA Activity card changes the chart below to that metric.
+## Launch-aware backfill
+The initial backfill now uses the earliest TA Uniswap v4 market `pairCreatedAt` timestamp returned by DEX Screener and starts exactly 24 hours before it. If an older deployment already saved a cursor far before launch, the next `/api/backfill` call automatically advances that cursor to the launch-aware start block. No Supabase reset is required.

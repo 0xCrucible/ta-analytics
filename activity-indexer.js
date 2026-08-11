@@ -113,12 +113,36 @@ async function getMarket() {
       const taAsBase = ranked.find((p) => String(p?.baseToken?.address || '').toLowerCase() === TOKEN);
       const taAsQuote = ranked.find((p) => String(p?.quoteToken?.address || '').toLowerCase() === TOKEN);
       const price = Number(taAsBase?.priceUsd ?? taAsQuote?.priceUsd);
+      const v4Pools = [];
+      const seenPoolIds = new Set();
+      for (const pair of pairs) {
+        const poolId = String(pair?.pairAddress || '').toLowerCase();
+        if (!/^0x[0-9a-f]{64}$/.test(poolId) || seenPoolIds.has(poolId)) continue;
+        const base = String(pair?.baseToken?.address || '').toLowerCase();
+        const quote = String(pair?.quoteToken?.address || '').toLowerCase();
+        const other = base === TOKEN ? quote : (quote === TOKEN ? base : '');
+        let tokenIndex = null;
+        if (/^0x[0-9a-f]{40}$/.test(other)) {
+          // Uniswap v4 orders PoolKey currencies by address, independent of
+          // DEX Screener's base/quote presentation. Derive TA's amount0/amount1
+          // position directly from the two currency addresses, so we do not
+          // need to rediscover the PoolKey from an Initialize log.
+          tokenIndex = BigInt(TOKEN) < BigInt(other) ? 0 : 1;
+        }
+        v4Pools.push({ poolId, otherCurrency: other || null, tokenIndex });
+        seenPoolIds.add(poolId);
+      }
+      const createdTimes = pairs
+        .filter((p) => /^0x[0-9a-f]{64}$/.test(String(p?.pairAddress || '').toLowerCase()))
+        .map((p) => Number(p?.pairCreatedAt))
+        .filter((t) => Number.isFinite(t) && t > 0);
+      const earliestPoolCreatedAt = createdTimes.length ? Math.min(...createdTimes) : null;
       return {
-        poolIds: [...new Set(pairs
-          .map((p) => String(p?.pairAddress || '').toLowerCase())
-          .filter((id) => /^0x[0-9a-f]{64}$/.test(id)))],
+        pools: v4Pools,
+        poolIds: v4Pools.map((p) => p.poolId),
         tokenPriceUsd: Number.isFinite(price) && price > 0 ? price : null,
         volume24h: pairs.reduce((sum, p) => sum + (Number(p?.volume?.h24) || 0), 0),
+        earliestPoolCreatedAt,
       };
     } catch (error) {
       lastError = error;
@@ -192,15 +216,28 @@ function decodeSwap(data) {
 }
 
 async function getPoolMeta(poolId, latestBlock) {
-  const rows = await logsComplete({ fromBlock: 0, toBlock: latestBlock, topic0: V4_INITIALIZE_TOPIC, topic1: poolId });
-  const row = rows[0];
+  let rows = [];
+  try {
+    rows = await logsComplete({ fromBlock: 0, toBlock: latestBlock, topic0: V4_INITIALIZE_TOPIC, topic1: poolId });
+  } catch {}
+  let row = rows[0];
+
+  // Some Blockscout deployments are unreliable when filtering a bytes32
+  // indexed pool ID as topic1. TA is a young token, so fall back to scanning
+  // recent Initialize events and match the pool ID locally.
+  if (!row) {
+    const recentStart = await getBlockAtTimestamp(Date.now() - 45 * DAY_MS).catch(() => Math.max(0, latestBlock - 5000000));
+    const recent = await logsComplete({ fromBlock: recentStart, toBlock: latestBlock, topic0: V4_INITIALIZE_TOPIC });
+    row = recent.find((item) => String(item?.topics?.[1] || '').toLowerCase() === poolId.toLowerCase());
+  }
+
   const topics = row?.topics || [];
   if (!row || topics.length < 4) throw new Error(`Pool metadata unavailable for ${poolId.slice(0, 10)}…`);
   const currency0 = topicAddress(topics[2]);
   const currency1 = topicAddress(topics[3]);
   const tokenIndex = currency0 === TOKEN ? 0 : (currency1 === TOKEN ? 1 : null);
   if (tokenIndex == null) throw new Error(`TA not found in pool ${poolId.slice(0, 10)}…`);
-  return { poolId, currency0, currency1, tokenIndex };
+  return { poolId, currency0, currency1, tokenIndex, currencySource: 'initialize-event' };
 }
 
 function logBlock(log) {
@@ -287,7 +324,22 @@ async function processRange(fromBlock, toBlock) {
   if (fromBlock > toBlock) return { fromBlock, toBlock, swaps: 0, rows: 0, pools: 0 };
   const [market, decimals] = await Promise.all([getMarket(), getTokenDecimals()]);
   if (!market.poolIds.length) throw new Error('DEX Screener did not return a Uniswap v4 TA pool ID');
-  const metas = await Promise.all(market.poolIds.map((poolId) => getPoolMeta(poolId, toBlock)));
+
+  // Prefer currency ordering derived from DEX Screener's TA pair currencies.
+  // A v4 pool ID is bytes32, not a contract address, and querying it as a
+  // standalone pool is invalid. Only fall back to Initialize-event discovery
+  // if DEX Screener did not provide a usable counter-currency address.
+  const metas = [];
+  for (const pool of (market.pools || [])) {
+    if (pool.tokenIndex === 0 || pool.tokenIndex === 1) {
+      metas.push({ poolId: pool.poolId, tokenIndex: pool.tokenIndex, currencySource: 'dexscreener' });
+    } else {
+      metas.push(await getPoolMeta(pool.poolId, toBlock));
+    }
+  }
+  if (!metas.length) {
+    for (const poolId of market.poolIds) metas.push(await getPoolMeta(poolId, toBlock));
+  }
   const logGroups = [];
   for (const meta of metas) {
     logGroups.push(await logsComplete({ fromBlock, toBlock, topic0: V4_SWAP_TOPIC, topic1: meta.poolId }));
@@ -355,22 +407,41 @@ async function processRange(fromBlock, toBlock) {
 
 async function initializeBackfill(days = 30) {
   const state = await getState();
-  const [desiredStartBlock, latestBlock] = await Promise.all([
-    getBlockAtTimestamp(Date.now() - days * DAY_MS),
-    getLatestBlock(),
-  ]);
+  const [market, latestBlock] = await Promise.all([getMarket(), getLatestBlock()]);
 
-  // If an older build already completed a shorter backfill (for example 30D),
-  // widen the saved backfill window to the requested history. Upserts make
-  // rescanning the overlapping recent period safe.
+  // TA is new, so don't scan millions of blocks from an arbitrary 30-day estimate.
+  // DEX Screener reports pairCreatedAt in milliseconds. Start exactly 24 hours
+  // before the earliest discovered TA Uniswap-v4 market. Fall back to the older
+  // time-based window only if pair creation metadata is unavailable.
+  const launchMs = Number(market?.earliestPoolCreatedAt);
+  const desiredStartMs = Number.isFinite(launchMs) && launchMs > 0
+    ? launchMs - DAY_MS
+    : Date.now() - days * DAY_MS;
+  const desiredStartBlock = await getBlockAtTimestamp(desiredStartMs);
+
   const currentStart = state?.backfill_start_block == null ? null : Number(state.backfill_start_block);
-  const needsWiderHistory = currentStart == null || currentStart > desiredStartBlock;
-  if (!needsWiderHistory && state?.backfill_complete) return state;
-  if (!needsWiderHistory && state?.backfill_cursor_block != null && state?.backfill_target_block != null) return state;
+  const currentCursor = state?.backfill_cursor_block == null ? null : Number(state.backfill_cursor_block);
+
+  // If an earlier build started far before TA existed, jump the cursor forward.
+  // If an existing start is later than the desired launch buffer, widen backward.
+  // Already indexed rows are protected by the swap table's unique key/upsert.
+  if (currentStart == null || currentCursor == null || currentCursor < desiredStartBlock || currentStart > desiredStartBlock) {
+    await upsertState({
+      backfill_start_block: desiredStartBlock,
+      backfill_cursor_block: desiredStartBlock,
+      backfill_target_block: latestBlock,
+      backfill_complete: false,
+      last_synced_block: state?.last_synced_block ?? latestBlock,
+    });
+    return getState();
+  }
+
+  if (state?.backfill_complete) return state;
+  if (state?.backfill_target_block != null) return state;
 
   await upsertState({
     backfill_start_block: desiredStartBlock,
-    backfill_cursor_block: desiredStartBlock,
+    backfill_cursor_block: currentCursor,
     backfill_target_block: latestBlock,
     backfill_complete: false,
     last_synced_block: state?.last_synced_block ?? latestBlock,

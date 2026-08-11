@@ -181,7 +181,6 @@ function render(d) {
   el('accountsFunded').textContent = integer(d.accountsFunded);
   el('accountsFundedHero').textContent = integer(d.accountsFunded);
   el('totalHolders').textContent = integer(d.totalHolders);
-  el('totalHoldersHero').textContent = integer(d.totalHolders);
   renderStates(d);
 
   const updated = new Date(d.updatedAt || Date.now());
