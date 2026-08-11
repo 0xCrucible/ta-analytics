@@ -138,60 +138,156 @@ function transferTimestamp(item) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-async function getTreasuryInflows() {
-  // TA's published treasury is primarily native ETH. Read normal address
-  // transactions and count successful inbound native-value transfers.
-  let items = [];
+function txTo(item) {
+  return String(item?.to?.hash || item?.to?.address || item?.to || '').toLowerCase();
+}
+
+function txFailed(item) {
+  const status = String(item?.status || '').toLowerCase();
+  const isError = String(item?.isError ?? item?.is_error ?? '').toLowerCase();
+  return status === 'error' || status === 'failed' || isError === '1' || isError === 'true';
+}
+
+async function getNativeUsdPrice() {
+  const urls = [
+    `${EXPLORER}/api?module=stats&action=coinprice`,
+    `${EXPLORER}/api?module=stats&action=ethprice`,
+    `${EXPLORER}/api/v2/stats`
+  ];
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      const json = await getJson(url);
+      const price = num(
+        json?.result?.coin_usd ??
+        json?.result?.ethusd ??
+        json?.coin_price ??
+        json?.coinPrice ??
+        json?.exchange_rate ??
+        json?.exchangeRate
+      );
+      if (price != null && price > 0) return { ok:true, price, source:url };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  return { ok:false, price:null, error:String(lastError?.message || lastError || 'Native USD price unavailable') };
+}
+
+async function getV2AddressRows(kind) {
+  const path = kind === 'internal' ? 'internal-transactions' : 'transactions';
+  const rows = [];
   let next = null;
   let pages = 0;
-  let lastError = null;
+
+  do {
+    const u = new URL(`${EXPLORER}/api/v2/addresses/${TREASURY}/${path}`);
+    if (next && typeof next === 'object') {
+      Object.entries(next).forEach(([k,v]) => { if (v != null) u.searchParams.set(k, String(v)); });
+    }
+    const json = await getJson(u.toString());
+    const pageRows = Array.isArray(json?.items) ? json.items : [];
+    rows.push(...pageRows);
+    next = json?.next_page_params || null;
+    pages += 1;
+
+    // We only need 30 days of history for the longest dashboard window.
+    const oldest = pageRows.map(transferTimestamp).filter(Boolean).sort((a,b)=>a-b)[0];
+    if (oldest && oldest.getTime() < rangeStart(31).getTime()) next = null;
+    if (pages >= 20) next = null;
+  } while (next);
+
+  return rows;
+}
+
+async function getLegacyAddressRows(kind) {
+  const action = kind === 'internal' ? 'txlistinternal' : 'txlist';
+  const u = new URL(`${EXPLORER}/api`);
+  u.searchParams.set('module', 'account');
+  u.searchParams.set('action', action);
+  u.searchParams.set('address', TREASURY);
+  u.searchParams.set('startblock', '0');
+  u.searchParams.set('endblock', '99999999');
+  u.searchParams.set('page', '1');
+  u.searchParams.set('offset', '1000');
+  u.searchParams.set('sort', 'desc');
+  const json = await getJson(u.toString());
+  return Array.isArray(json?.result) ? json.result : [];
+}
+
+async function loadTreasuryRows(kind) {
+  const errors = [];
+  try {
+    const rows = await getV2AddressRows(kind);
+    if (rows.length) return { rows, source:`v2-${kind}`, errors };
+  } catch (e) {
+    errors.push(`v2 ${kind}: ${String(e.message || e)}`);
+  }
 
   try {
-    do {
-      const u = new URL(`${EXPLORER}/api/v2/addresses/${TREASURY}/transactions`);
-      if (next && typeof next === 'object') {
-        Object.entries(next).forEach(([k,v]) => { if (v != null) u.searchParams.set(k, String(v)); });
-      }
-      const json = await getJson(u.toString());
-      const rows = Array.isArray(json?.items) ? json.items : [];
-      items.push(...rows);
-      next = json?.next_page_params || null;
-      pages += 1;
-      if (pages >= 12) next = null;
-      const oldest = rows.map(transferTimestamp).filter(Boolean).sort((a,b)=>a-b)[0];
-      if (oldest && oldest.getTime() < rangeStart(30).getTime()) next = null;
-    } while (next);
+    const rows = await getLegacyAddressRows(kind);
+    if (rows.length) return { rows, source:`legacy-${kind}`, errors };
   } catch (e) {
-    lastError = e;
+    errors.push(`legacy ${kind}: ${String(e.message || e)}`);
   }
 
-  if (!items.length) {
-    return {ok:false, records:[], error:String(lastError?.message || lastError || 'No treasury transactions returned')};
-  }
+  return { rows:[], source:null, errors };
+}
+
+async function getTreasuryInflows() {
+  // Fee revenue can arrive as either a direct native transfer or an internal
+  // native transfer created during a contract call, so inspect both streams.
+  const [normal, internal, priceInfo] = await Promise.all([
+    loadTreasuryRows('normal'),
+    loadTreasuryRows('internal'),
+    getNativeUsdPrice()
+  ]);
 
   const records = [];
-  for (const x of items) {
-    const to = String(x?.to?.hash || x?.to?.address || x?.to || '').toLowerCase();
-    if (to !== TREASURY.toLowerCase()) continue;
-    if (String(x?.status || '').toLowerCase() === 'error') continue;
+  const seen = new Set();
+  const candidates = [
+    ...normal.rows.map((x) => ({...x, _kind:'normal'})),
+    ...internal.rows.map((x) => ({...x, _kind:'internal'}))
+  ];
+
+  for (const x of candidates) {
+    if (txTo(x) !== TREASURY.toLowerCase()) continue;
+    if (txFailed(x)) continue;
 
     const date = transferTimestamp(x);
     const eth = nativeAmount(x?.value);
     if (!date || eth == null || eth <= 0) continue;
 
-    // Blockscout transaction responses can include exchange_rate for the
-    // native coin. Use that transaction response value instead of assuming a fee %.
-    const exchangeRate = num(x?.exchange_rate ?? x?.exchangeRate);
-    const usd = exchangeRate != null && exchangeRate > 0 ? eth * exchangeRate : null;
-    records.push({date, eth, usd});
+    // Dedupe identical explorer rows while retaining genuine separate internal calls.
+    const hash = String(x?.hash || x?.transaction_hash || x?.transactionHash || '');
+    const trace = String(x?.index ?? x?.trace_index ?? x?.transaction_index ?? x?._kind ?? '');
+    const key = `${x._kind}:${hash}:${trace}:${x?.value}:${date.toISOString()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const txRate = num(x?.exchange_rate ?? x?.exchangeRate);
+    const usdRate = txRate != null && txRate > 0 ? txRate : priceInfo.price;
+    records.push({
+      date,
+      eth,
+      usd: usdRate != null ? eth * usdRate : null,
+      usdRate,
+      valuation: txRate != null && txRate > 0 ? 'transaction-rate' : (priceInfo.price != null ? 'current-rate' : null),
+      kind:x._kind
+    });
   }
 
-  const hasUsd = records.some(r => r.usd != null);
+  records.sort((a,b) => b.date - a.date);
+  const errors = [...normal.errors, ...internal.errors];
+  if (!priceInfo.ok && priceInfo.error) errors.push(`native price: ${priceInfo.error}`);
+
   return {
     ok: records.length > 0,
-    usdAvailable: hasUsd,
+    usdAvailable: records.some(r => r.usd != null),
     records,
-    error: records.length ? null : String(lastError?.message || lastError || 'No inbound native treasury transfers found')
+    nativeUsdPrice: priceInfo.price,
+    sources: [normal.source, internal.source].filter(Boolean),
+    error: records.length ? null : (errors.join(' | ') || 'No inbound native treasury transfers found')
   };
 }
 
@@ -199,10 +295,12 @@ function treasuryDays(records, days) {
   const start = rangeStart(days).getTime();
   const xs = records.filter(x => x.date.getTime() >= start);
   const usdRows = xs.filter(x => x.usd != null);
+  const usedCurrentPrice = xs.some(x => x.valuation === 'current-rate');
   return {
     eth: xs.reduce((sum,x) => sum + (x.eth || 0), 0),
     usd: usdRows.length ? usdRows.reduce((sum,x) => sum + x.usd, 0) : null,
-    count: xs.length
+    count: xs.length,
+    usedCurrentPrice
   };
 }
 
@@ -371,7 +469,7 @@ module.exports = async function handler(req, res) {
           ...r24,
           treasuryAdded: treasuryFlows.ok ? t24.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t24.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? `${t24.count} inbound native ETH transfer${t24.count === 1 ? '' : 's'} in this period` : `${t24.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
+          treasuryAddedNote: treasuryFlows.ok ? (t24.usd != null ? `${t24.count} inbound native ETH transfer${t24.count === 1 ? '' : 's'}${t24.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t24.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
           newHolders: holders.newHolders24h,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 1)
@@ -383,7 +481,7 @@ module.exports = async function handler(req, res) {
           ...r7,
           treasuryAdded: treasuryFlows.ok ? t7.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t7.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? `${t7.count} inbound native ETH transfer${t7.count === 1 ? '' : 's'} in this period` : `${t7.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
+          treasuryAddedNote: treasuryFlows.ok ? (t7.usd != null ? `${t7.count} inbound native ETH transfer${t7.count === 1 ? '' : 's'}${t7.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t7.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
           newHolders: holders.newHolders7d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 7)
@@ -395,7 +493,7 @@ module.exports = async function handler(req, res) {
           ...r30,
           treasuryAdded: treasuryFlows.ok ? t30.usd : null,
           treasuryAddedEth: treasuryFlows.ok ? t30.eth : null,
-          treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? `${t30.count} inbound native ETH transfer${t30.count === 1 ? '' : 's'} in this period` : `${t30.eth.toFixed(4)} ETH received · USD rate unavailable`) : 'Treasury transaction source unavailable',
+          treasuryAddedNote: treasuryFlows.ok ? (t30.usd != null ? `${t30.count} inbound native ETH transfer${t30.count === 1 ? '' : 's'}${t30.usedCurrentPrice ? ' · USD value at current native-coin price' : ''}` : `${t30.eth.toFixed(4)} native ETH received · USD price unavailable`) : 'No inbound treasury transfers found from explorer',
           newHolders: holders.newHolders30d,
           newHoldersNote: holders.note,
           series: buildSeries(fund.records, 30)
@@ -409,7 +507,9 @@ module.exports = async function handler(req, res) {
         marketError: market.error || null,
         fundErrors: fund.errors,
         holderError: holders.error || null,
-        treasuryFlowError: treasuryFlows.error || null
+        treasuryFlowError: treasuryFlows.error || null,
+        treasuryFlowSources: treasuryFlows.sources || [],
+        nativeUsdPrice: treasuryFlows.nativeUsdPrice ?? null
       },
       updatedAt: new Date().toISOString()
     });
