@@ -67,3 +67,7 @@ button{font:inherit}
 }
 .bar.zero{opacity:.18}
 .metric-card[data-metric]{user-select:none}
+
+
+.bar-col.unavailable .bar{background:transparent;border-top:1px dashed var(--border-dark);opacity:1}
+.bar-col.unavailable .bar-label{color:var(--muted)}

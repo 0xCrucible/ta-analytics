@@ -34,6 +34,60 @@ const METRIC_COPY = {
   uniqueWallets: { label: 'UNIQUE WALLETS', legend: 'Unique trading wallets', kind: 'integer', source: 'activitySeries', key: 'uniqueWallets' }
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDayStart(value) {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return null;
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function elapsedLaunchDays(rangeKey) {
+  const launch = utcDayStart(DATA?.tokenLaunchAt);
+  const today = utcDayStart(Date.now());
+  if (!launch || !today) return [];
+
+  const requestedDays = rangeKey === '7d' ? 7 : rangeKey === '30d' ? 30 : rangeKey === '1y' ? 365 : 1;
+  const windowStart = new Date(today.getTime() - (requestedDays - 1) * DAY_MS);
+  const start = launch > windowStart ? launch : windowStart;
+  if (start > today) return [];
+
+  const out = [];
+  for (let d = new Date(start); d <= today; d = new Date(d.getTime() + DAY_MS)) {
+    out.push({
+      date: new Date(d),
+      label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    });
+  }
+  return out;
+}
+
+function partialVolumeRows(rangeData) {
+  const days = elapsedLaunchDays(RANGE);
+  if (!days.length) {
+    return [{ label: 'Latest 24H', value: Number(rangeData?.volume) || null, partial: true }];
+  }
+
+  // We know the live rolling 24H DEX volume, but not the historical daily split yet.
+  // Show every real day TA has existed in the selected window without turning
+  // unknown history into fake $0 bars.
+  return days.map((day, index) => ({
+    label: `${day.label}${index === days.length - 1 ? '*' : ''}`,
+    value: index === days.length - 1 ? (Number(rangeData?.volume) || null) : null,
+    unavailable: index !== days.length - 1,
+    partial: true
+  }));
+}
+
+function launchWindowTitle(rangeKey) {
+  const days = elapsedLaunchDays(rangeKey);
+  if (!days.length || rangeKey === '24h') return RANGE_COPY[rangeKey]?.title || '';
+  const requested = rangeKey === '7d' ? 7 : rangeKey === '30d' ? 30 : 365;
+  const unit = rangeKey === '1y' ? '1Y' : `${requested}D`;
+  return `Since launch · ${days.length} of ${unit} days`;
+}
+
 function renderStates(d) {
   const states = Array.isArray(d.stateSummary) ? d.stateSummary : [];
   el('statesReached').textContent = integer(states.length);
@@ -89,16 +143,21 @@ function closeStates() {
 function chartRows(rangeData, metric) {
   const cfg = METRIC_COPY[metric];
   const rows = Array.isArray(rangeData?.[cfg.source]) ? rangeData[cfg.source] : [];
-  const mapped = rows.map((row) => ({ label: row.label || '', value: Number(row[cfg.key]) || 0 }));
-  const hasPositive = mapped.some((row) => row.value > 0);
+  const mapped = rows.map((row) => ({
+    label: row.label || '',
+    value: row[cfg.key] == null ? null : (Number(row[cfg.key]) || 0)
+  }));
+  const hasPositive = mapped.some((row) => Number(row.value) > 0);
 
-  // If historical trade indexing is not populated yet, do not draw a misleading
-  // flat-zero volume chart. Show the live DEX volume we actually have instead.
+  // For a young token, longer selected windows should show only the calendar
+  // days that have actually existed since launch. Unknown historical daily
+  // volume stays blank rather than being mislabeled as $0.
+  if (metric === 'volume' && rangeData?.volumePartial && RANGE !== '24h' && Number(rangeData?.volume) > 0) {
+    return partialVolumeRows(rangeData);
+  }
+
   if (metric === 'volume' && !hasPositive && Number(rangeData?.volume) > 0) {
-    return [{
-      label: rangeData?.volumePartial ? 'Latest 24H' : (RANGE_COPY[RANGE]?.label || 'Available'),
-      value: Number(rangeData.volume)
-    }];
+    return [{ label: RANGE_COPY[RANGE]?.label || 'Available', value: Number(rangeData.volume) }];
   }
 
   return mapped;
@@ -116,15 +175,18 @@ function drawMetricChart(rangeData) {
     return;
   }
 
-  const max = Math.max(1, ...rows.map((x) => x.value));
+  const numericValues = rows.map((x) => Number(x.value)).filter((x) => Number.isFinite(x) && x > 0);
+  const max = Math.max(1, ...numericValues);
   rows.forEach((r) => {
     const c = document.createElement('div');
-    c.className = 'bar-col';
-    const h = r.value > 0 ? Math.max(4, Math.round((r.value / max) * 220)) : 2;
-    const formatted = cfg.kind === 'integer' ? integer(r.value) : money(r.value, true);
+    c.className = `bar-col${r.unavailable ? ' unavailable' : ''}`;
+    const hasValue = r.value != null && Number.isFinite(Number(r.value));
+    const numeric = hasValue ? Number(r.value) : 0;
+    const h = numeric > 0 ? Math.max(4, Math.round((numeric / max) * 220)) : 2;
+    const formatted = cfg.kind === 'integer' ? integer(numeric) : money(numeric, true);
     c.innerHTML = `
-      <span class="bar-val">${r.value ? formatted : ''}</span>
-      <div class="bar${r.value ? '' : ' zero'}" style="height:${h}px"></div>
+      <span class="bar-val">${numeric > 0 ? formatted : ''}</span>
+      <div class="bar${r.unavailable ? ' unavailable' : (numeric ? '' : ' zero')}" style="height:${h}px"></div>
       <span class="bar-label">${r.label}</span>`;
     chart.appendChild(c);
   });
@@ -137,12 +199,14 @@ function renderChart() {
   const r = DATA.ranges[RANGE];
 
   el('chartEyebrow').textContent = cfg.label;
-  el('chartTitle').textContent = meta.title;
+  el('chartTitle').textContent = (METRIC === 'volume' && r.volumePartial && RANGE !== '24h')
+    ? launchWindowTitle(RANGE)
+    : meta.title;
   el('chartLegend').textContent = cfg.legend;
 
   if (METRIC === 'volume') {
     el('chartNote').textContent = r.volumePartial
-      ? `Partial history · latest 24H DEX volume shown while longer-range history accumulates.`
+      ? `* Live rolling 24H DEX volume. Earlier dates are shown from TA launch onward but remain blank until historical daily volume is available.`
       : (r.activitySeries?.some((row) => Number(row.volume) > 0)
         ? `${cfg.legend} from indexed TA swap activity · ${meta.title.toLowerCase()}.`
         : `Live DEX volume · ${meta.title.toLowerCase()}.`);

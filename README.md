@@ -106,3 +106,9 @@ The initial backfill now uses the earliest TA Uniswap v4 market `pairCreatedAt` 
 
 
 - Longer-range Trading Volume no longer displays $0 when historical indexing is empty. It falls back to the live 24H DEX volume and labels it as partial until indexed history is available.
+
+
+- 7D / 30D / 1Y Trading Volume charts now begin at the TA market launch date.
+- Days before launch are not plotted.
+- Elapsed days with unavailable historical volume remain blank instead of being shown as $0.
+- The latest live rolling 24H DEX volume is plotted on the current date and marked with an asterisk until historical daily indexing is available.
