@@ -86,9 +86,9 @@
           </article>
 
           <article class="metric-card">
-            <div class="metric-head"><span class="metric-label">NEW HOLDER WALLETS</span><span class="status-tag" id="holderPeriod">24H</span></div>
-            <div class="metric-value" id="newHolders">—</div>
-            <div class="metric-sub" id="newHoldersSub">New wallets holding TA in this period</div>
+            <div class="metric-head"><span class="metric-label">ADDED TO TREASURY</span><span class="status-tag" id="treasuryAddedPeriod">24H</span></div>
+            <div class="metric-value" id="treasuryAdded">—</div>
+            <div class="metric-sub" id="treasuryAddedSub">Inbound treasury value in this period</div>
           </article>
 
           <article class="metric-card">
@@ -96,13 +96,6 @@
             <div class="metric-value" id="treasuryCard">—</div>
             <div class="metric-sub">Current published treasury balance</div>
           </article>
-
-          <article class="metric-card">
-            <div class="metric-head"><span class="metric-label">TOTAL HOLDERS</span><span class="status-tag">NOW</span></div>
-            <div class="metric-value" id="holdersNow">—</div>
-            <div class="metric-sub" id="holdersNowSub">Current holder count</div>
-          </article>
-
         </div>
       </section>
 
@@ -113,18 +106,6 @@
             <h2 id="chartTitle">Last 24 hours</h2>
           </div>
           <div class="legend"><span class="legend-dot"></span> Donations made</div>
-        </div>
-        <div class="activity-summary">
-          <div class="activity-summary-item">
-            <span>Added to treasury</span>
-            <strong id="treasuryAdded">—</strong>
-            <small id="treasuryAddedSub">Inbound native ETH value in this period</small>
-          </div>
-          <div class="activity-summary-item">
-            <span>Donations made</span>
-            <strong id="activityDonations">—</strong>
-            <small id="activityDonationCount">Published contributions in this period</small>
-          </div>
         </div>
         <div id="chart" class="chart"></div>
         <div class="chart-note" id="chartNote">Published donation activity for the selected period.</div>

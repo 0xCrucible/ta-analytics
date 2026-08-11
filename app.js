@@ -108,7 +108,7 @@ function renderRange() {
 
   el('volumePeriod').textContent = meta.label;
   el('donationPeriod').textContent = meta.label;
-  el('holderPeriod').textContent = meta.label;
+  el('treasuryAddedPeriod').textContent = meta.label;
   el('chartTitle').textContent = meta.title;
 
   el('volume').textContent = money(r.volume, true);
@@ -121,11 +121,6 @@ function renderRange() {
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
-  el('activityDonations').textContent = money(r.donations);
-  el('activityDonationCount').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
-
-  el('newHolders').textContent = integer(r.newHolders);
-  el('newHoldersSub').textContent = r.newHoldersNote || 'New wallets holding TA in this period';
 
   el('chartNote').textContent = `Published donation activity · ${meta.title.toLowerCase()}.`;
   draw(r.series || []);
@@ -141,8 +136,6 @@ function render(d) {
   el('accountsFundedHero').textContent = integer(d.accountsFunded);
   el('totalHolders').textContent = integer(d.totalHolders);
   el('totalHoldersHero').textContent = integer(d.totalHolders);
-  el('holdersNow').textContent = integer(d.totalHolders);
-  el('holdersNowSub').textContent = d.holdersAvailable ? 'Current holder count from public explorer data' : 'Holder count source unavailable right now';
   renderStates(d);
 
   const updated = new Date(d.updatedAt || Date.now());

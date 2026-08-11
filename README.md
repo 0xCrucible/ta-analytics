@@ -28,3 +28,7 @@ README.md
 
 ## State view update
 Each state card now shows only the number of donations and the total donated to that state. Individual donation amounts and dates have been removed from the UI.
+
+
+## Current analytics layout
+The 24H / 7D / 30D selector now controls three variable metrics: Trading Volume, Donations Made, and Added to Treasury. Treasury Balance remains a current (NOW) value. Holder metrics are not shown in the TA Activity analytics grid.
