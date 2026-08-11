@@ -117,7 +117,7 @@ function renderRange() {
     : (r.volumeNote || 'Historical market volume not available yet');
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
-  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Inbound native ETH value in this period';
+  el('treasuryAddedSub').textContent = r.treasuryAddedNote || 'Trading-fee inflows received by the treasury in this period';
 
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
@@ -131,7 +131,6 @@ function render(d) {
   el('heroContributions').textContent = money(d.totalContributed);
   el('allTimeDonations').textContent = money(d.totalContributed);
   el('treasury').textContent = money(d.treasury);
-  el('treasuryCard').textContent = money(d.treasury);
   el('accountsFunded').textContent = integer(d.accountsFunded);
   el('accountsFundedHero').textContent = integer(d.accountsFunded);
   el('totalHolders').textContent = integer(d.totalHolders);

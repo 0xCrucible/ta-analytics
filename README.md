@@ -1,26 +1,25 @@
-# TA Metrics — Treasury Flow Fix
+# TA Metrics — Trading Fees to Treasury
 
-This version fixes the **Added to Treasury** 24H / 7D / 30D metric.
+Latest layout changes:
+- TA Activity variable metrics are now exactly:
+  - Trading Volume
+  - Donations Made
+  - Trading Fees to Treasury
+- All three follow the same 24H / 7D / 30D selector.
+- Current Treasury Balance is not shown as a TA Activity metric; it remains in the upper current-summary area.
+- Holder metrics remain outside TA Activity.
+- Total Contributions keeps the “View contribution records →” link.
+- States Impacted remains in the summary row with its breakdown view.
 
-## What changed
+Repo structure:
 
-The previous version depended on one Blockscout endpoint and expected each transaction row to provide a USD exchange rate. That could leave the metric blank.
-
-This version:
-- checks **direct native transactions** into the treasury Safe;
-- checks **internal native transactions** into the Safe;
-- uses Blockscout API v2 first and falls back to its legacy account API;
-- separately fetches the chain's current native-coin USD price when a transaction row has no historical exchange rate;
-- returns useful diagnostic details in `/api/dashboard` under `sourceStatus`.
-
-## Important valuation note
-
-When Blockscout provides a per-transaction exchange rate, the dashboard uses it. When it does not, the dashboard values the received native coin at the **current native-coin USD price** and labels the card accordingly. This is an estimate of current USD value, not a historical USD-at-receipt valuation.
-
-## Deploy
-
-Replace these files in your repo:
-- `api/dashboard.js`
-- `README.md`
-
-You may replace the full project if preferred.
+```text
+api/
+  dashboard.js
+app.js
+index.html
+styles.css
+vercel.json
+package.json
+README.md
+```
