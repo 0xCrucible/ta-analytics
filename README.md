@@ -93,3 +93,8 @@ vercel.json
 package.json
 README.md
 ```
+
+
+## 1Y chart behavior
+
+The 1Y selector means all available activity within the most recent year. The historical backfill is intentionally limited to 30 days because TA is currently younger than that. Ongoing sync keeps every newly indexed swap, so the 1Y window grows naturally over time without rescanning a year of empty pre-launch blocks. Clicking any TA Activity card changes the chart below to that metric.

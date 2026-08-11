@@ -16,11 +16,22 @@ const integer = (n) => {
 const el = (id) => document.getElementById(id);
 let DATA = null;
 let RANGE = '24h';
+let METRIC = 'volume';
 
 const RANGE_COPY = {
   '24h': { label: '24H', title: 'Last 24 hours' },
   '7d': { label: '7D', title: 'Last 7 days' },
-  '30d': { label: '30D', title: 'Last 30 days' }
+  '30d': { label: '30D', title: 'Last 30 days' },
+  '1y': { label: '1Y', title: 'Up to 1 year' }
+};
+
+const METRIC_COPY = {
+  volume: { label: 'TRADING VOLUME', legend: 'Trading volume', kind: 'money', source: 'activitySeries', key: 'volume' },
+  donations: { label: 'DONATIONS MADE', legend: 'Published donations', kind: 'money', source: 'series', key: 'amount' },
+  treasuryAdded: { label: 'TRADING FEES TO TREASURY', legend: 'Trading fees to treasury', kind: 'money', source: 'treasurySeries', key: 'amount' },
+  buyVolume: { label: 'BUY VOLUME', legend: 'Buy volume', kind: 'money', source: 'activitySeries', key: 'buyVolume' },
+  sellVolume: { label: 'SELL VOLUME', legend: 'Sell volume', kind: 'money', source: 'activitySeries', key: 'sellVolume' },
+  uniqueWallets: { label: 'UNIQUE WALLETS', legend: 'Unique trading wallets', kind: 'integer', source: 'activitySeries', key: 'uniqueWallets' }
 };
 
 function renderStates(d) {
@@ -40,7 +51,6 @@ function renderStates(d) {
   states.forEach((state) => {
     const card = document.createElement('article');
     card.className = 'state-card';
-
     card.innerHTML = `
       <div class="state-card__top">
         <div>
@@ -50,16 +60,9 @@ function renderStates(d) {
         <div class="state-total">${money(state.total)}</div>
       </div>
       <div class="state-stats">
-        <div>
-          <span>Donations</span>
-          <strong>${integer(state.count)}</strong>
-        </div>
-        <div>
-          <span>Total donated</span>
-          <strong>${money(state.total)}</strong>
-        </div>
-      </div>
-    `;
+        <div><span>Donations</span><strong>${integer(state.count)}</strong></div>
+        <div><span>Total donated</span><strong>${money(state.total)}</strong></div>
+      </div>`;
     grid.appendChild(card);
   });
 }
@@ -80,25 +83,59 @@ function closeStates() {
   el('openStates').focus();
 }
 
-function draw(rows) {
+function chartRows(rangeData, metric) {
+  const cfg = METRIC_COPY[metric];
+  const rows = Array.isArray(rangeData?.[cfg.source]) ? rangeData[cfg.source] : [];
+  return rows.map((row) => ({ label: row.label || '', value: Number(row[cfg.key]) || 0 }));
+}
+
+function drawMetricChart(rangeData) {
+  const cfg = METRIC_COPY[METRIC];
+  const rows = chartRows(rangeData, METRIC);
   const chart = el('chart');
   chart.innerHTML = '';
+
   if (!rows.length) {
-    chart.innerHTML = '<div class="empty">No published donations in this period.</div>';
+    const waitingForActivity = ['volume', 'buyVolume', 'sellVolume', 'uniqueWallets'].includes(METRIC);
+    chart.innerHTML = `<div class="empty">${waitingForActivity ? 'Trade history has not been indexed for this period yet.' : 'No activity in this period.'}</div>`;
     return;
   }
-  const max = Math.max(1, ...rows.map((x) => x.amount || 0));
+
+  const max = Math.max(1, ...rows.map((x) => x.value));
   rows.forEach((r) => {
     const c = document.createElement('div');
     c.className = 'bar-col';
-    const h = Math.max(4, Math.round(((r.amount || 0) / max) * 220));
+    const h = r.value > 0 ? Math.max(4, Math.round((r.value / max) * 220)) : 2;
+    const formatted = cfg.kind === 'integer' ? integer(r.value) : money(r.value, true);
     c.innerHTML = `
-      <span class="bar-val">${r.amount ? money(r.amount, true) : ''}</span>
-      <div class="bar" style="height:${h}px"></div>
-      <span class="bar-label">${r.label}</span>
-    `;
+      <span class="bar-val">${r.value ? formatted : ''}</span>
+      <div class="bar${r.value ? '' : ' zero'}" style="height:${h}px"></div>
+      <span class="bar-label">${r.label}</span>`;
     chart.appendChild(c);
   });
+}
+
+function renderChart() {
+  if (!DATA?.ranges?.[RANGE]) return;
+  const meta = RANGE_COPY[RANGE];
+  const cfg = METRIC_COPY[METRIC];
+  const r = DATA.ranges[RANGE];
+
+  el('chartEyebrow').textContent = cfg.label;
+  el('chartTitle').textContent = meta.title;
+  el('chartLegend').textContent = cfg.legend;
+
+  if (['volume', 'buyVolume', 'sellVolume', 'uniqueWallets'].includes(METRIC)) {
+    el('chartNote').textContent = r.activitySeries?.length
+      ? `${cfg.legend} from indexed TA swap activity · ${meta.title.toLowerCase()}.`
+      : `Waiting for indexed TA swap history · ${meta.title.toLowerCase()}.`;
+  } else if (METRIC === 'treasuryAdded') {
+    el('chartNote').textContent = `Treasury fee activity · ${meta.title.toLowerCase()}.`;
+  } else {
+    el('chartNote').textContent = `Published donation activity · ${meta.title.toLowerCase()}.`;
+  }
+
+  drawMetricChart(r);
 }
 
 function renderRange() {
@@ -112,11 +149,10 @@ function renderRange() {
   el('buyVolumePeriod').textContent = meta.label;
   el('sellVolumePeriod').textContent = meta.label;
   el('uniqueWalletsPeriod').textContent = meta.label;
-  el('chartTitle').textContent = meta.title;
 
   el('volume').textContent = money(r.volume, true);
   el('volumeSub').textContent = r.volumeAvailable
-    ? `${DATA.marketPairs || 0} tracked TA market pair${DATA.marketPairs === 1 ? '' : 's'} · public DEX data`
+    ? `${DATA.marketPairs || 0} tracked TA market pair${DATA.marketPairs === 1 ? '' : 's'} · public DEX/on-chain data`
     : (r.volumeNote || 'Historical market volume not available yet');
 
   el('treasuryAdded').textContent = money(r.treasuryAdded);
@@ -134,8 +170,7 @@ function renderRange() {
   el('donations').textContent = money(r.donations);
   el('donationsSub').textContent = `${r.donationCount || 0} published donation${r.donationCount === 1 ? '' : 's'} in this period`;
 
-  el('chartNote').textContent = `Published donation activity · ${meta.title.toLowerCase()}.`;
-  draw(r.series || []);
+  renderChart();
 }
 
 function render(d) {
@@ -156,7 +191,6 @@ function render(d) {
   renderRange();
 }
 
-
 async function loadActivity() {
   try {
     const response = await fetch('/api/activity', { cache: 'no-store' });
@@ -164,27 +198,31 @@ async function loadActivity() {
     const activity = await response.json();
     if (!activity.ok) throw new Error(activity.error || 'Activity source unavailable');
     if (!DATA) return;
-    for (const key of ['24h', '7d', '30d']) {
+
+    for (const key of ['24h', '7d', '30d', '1y']) {
       const a = activity.ranges?.[key] || {};
+      if (!DATA.ranges[key]) continue;
       DATA.ranges[key].buyVolume = a.buyVolume ?? null;
       DATA.ranges[key].sellVolume = a.sellVolume ?? null;
       DATA.ranges[key].uniqueWallets = a.uniqueWallets ?? null;
+      DATA.ranges[key].activitySeries = Array.isArray(a.series) ? a.series : [];
       DATA.ranges[key].tradeActivityNote = activity.note;
       DATA.ranges[key].uniqueWalletsNote = activity.walletNote;
-      // 7D and 30D total volume can be reconstructed by the activity endpoint.
       if (key !== '24h' && a.volume != null) {
         DATA.ranges[key].volume = a.volume;
         DATA.ranges[key].volumeAvailable = true;
-        DATA.ranges[key].volumeNote = 'Estimated from on-chain Uniswap v4 swaps at the current TA/USD price';
+        DATA.ranges[key].volumeNote = 'Estimated from indexed on-chain Uniswap v4 swaps';
       }
     }
     renderRange();
   } catch (error) {
     console.error('TA Metrics activity load failed:', error);
     if (!DATA) return;
-    for (const key of ['24h', '7d', '30d']) {
+    for (const key of ['24h', '7d', '30d', '1y']) {
+      if (!DATA.ranges[key]) continue;
       DATA.ranges[key].tradeActivityNote = 'Trade activity temporarily unavailable';
       DATA.ranges[key].uniqueWalletsNote = 'Trade activity temporarily unavailable';
+      DATA.ranges[key].activitySeries = [];
     }
     renderRange();
   }
@@ -207,15 +245,38 @@ async function load() {
   }
 }
 
+function selectMetric(metric) {
+  if (!METRIC_COPY[metric]) return;
+  METRIC = metric;
+  document.querySelectorAll('.metric-card[data-metric]').forEach((card) => {
+    const active = card.dataset.metric === metric;
+    card.classList.toggle('active-metric', active);
+    card.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  renderChart();
+}
+
 document.querySelectorAll('.period-btn').forEach((btn) => btn.addEventListener('click', () => {
   RANGE = btn.dataset.range;
   document.querySelectorAll('.period-btn').forEach((b) => b.classList.toggle('active', b === btn));
   renderRange();
 }));
 
+document.querySelectorAll('.metric-card[data-metric]').forEach((card) => {
+  card.addEventListener('click', (event) => {
+    if (event.target.closest('a')) return;
+    selectMetric(card.dataset.metric);
+  });
+  card.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectMetric(card.dataset.metric);
+    }
+  });
+});
+
 load();
 setInterval(load, 60000);
-
 
 el('openStates').addEventListener('click', openStates);
 el('closeStates').addEventListener('click', closeStates);
@@ -223,7 +284,6 @@ el('statesBackdrop').addEventListener('click', closeStates);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && el('statesModal').classList.contains('open')) closeStates();
 });
-
 
 const TA_CONTRACT = '0x9ca1cc0c90d97b4f36c5e2232d4fbd705a73c65d';
 const copyContractButton = el('copyContract');

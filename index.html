@@ -73,42 +73,43 @@
             <button class="period-btn active" data-range="24h">24H</button>
             <button class="period-btn" data-range="7d">7D</button>
             <button class="period-btn" data-range="30d">30D</button>
+            <button class="period-btn" data-range="1y">1Y</button>
           </div>
         </div>
 
         <div class="metric-grid">
-          <article class="metric-card">
+          <article class="metric-card active-metric" data-metric="volume" role="button" tabindex="0" aria-pressed="true">
             <div class="metric-head"><span class="metric-label">TRADING VOLUME</span><span class="status-tag" id="volumePeriod">24H</span></div>
             <div class="metric-value" id="volume">—</div>
             <div class="metric-sub" id="volumeSub">Loading market data…</div>
             <a class="metric-action-link" href="https://fomo.family/r/parad0x1010" target="_blank" rel="noreferrer">Trade $TA on FOMO →</a>
           </article>
 
-          <article class="metric-card">
+          <article class="metric-card" data-metric="donations" role="button" tabindex="0" aria-pressed="false">
             <div class="metric-head"><span class="metric-label">DONATIONS MADE</span><span class="status-tag" id="donationPeriod">24H</span></div>
             <div class="metric-value" id="donations">—</div>
             <div class="metric-sub" id="donationsSub">Published contributions</div>
           </article>
 
-          <article class="metric-card">
+          <article class="metric-card" data-metric="treasuryAdded" role="button" tabindex="0" aria-pressed="false">
             <div class="metric-head"><span class="metric-label">TRADING FEES TO TREASURY</span><span class="status-tag" id="treasuryAddedPeriod">24H</span></div>
             <div class="metric-value" id="treasuryAdded">—</div>
             <div class="metric-sub" id="treasuryAddedSub">Trading fees received by the treasury during this period</div>
           </article>
 
-          <article class="metric-card">
+          <article class="metric-card" data-metric="buyVolume" role="button" tabindex="0" aria-pressed="false">
             <div class="metric-head"><span class="metric-label">BUY VOLUME</span><span class="status-tag" id="buyVolumePeriod">24H</span></div>
             <div class="metric-value" id="buyVolume">—</div>
             <div class="metric-sub" id="buyVolumeSub">Estimated USD value of TA bought during this period</div>
           </article>
 
-          <article class="metric-card">
+          <article class="metric-card" data-metric="sellVolume" role="button" tabindex="0" aria-pressed="false">
             <div class="metric-head"><span class="metric-label">SELL VOLUME</span><span class="status-tag" id="sellVolumePeriod">24H</span></div>
             <div class="metric-value" id="sellVolume">—</div>
             <div class="metric-sub" id="sellVolumeSub">Estimated USD value of TA sold during this period</div>
           </article>
 
-          <article class="metric-card">
+          <article class="metric-card" data-metric="uniqueWallets" role="button" tabindex="0" aria-pressed="false">
             <div class="metric-head"><span class="metric-label">UNIQUE WALLETS</span><span class="status-tag" id="uniqueWalletsPeriod">24H</span></div>
             <div class="metric-value" id="uniqueWallets">—</div>
             <div class="metric-sub" id="uniqueWalletsSub">Distinct addresses with buy or sell activity during this period</div>
@@ -119,13 +120,13 @@
       <section class="chart-panel">
         <div class="chart-head">
           <div>
-            <p class="section-label">PUBLISHED DONATION ACTIVITY</p>
+            <p class="section-label" id="chartEyebrow">TRADING VOLUME</p>
             <h2 id="chartTitle">Last 24 hours</h2>
           </div>
-          <div class="legend"><span class="legend-dot"></span> Donations made</div>
+          <div class="legend"><span class="legend-dot"></span> <span id="chartLegend">Trading volume</span></div>
         </div>
         <div id="chart" class="chart"></div>
-        <div class="chart-note" id="chartNote">Published donation activity for the selected period.</div>
+        <div class="chart-note" id="chartNote">Click any TA activity box to chart that metric.</div>
       </section>
 
       <section class="sources">
